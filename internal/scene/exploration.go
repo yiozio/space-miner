@@ -14,11 +14,15 @@ import (
 
 const (
 	startAsteroidCount = 8
-	asteroidMinDist    = 250.0
-	asteroidMaxDist    = 850.0
-	asteroidMinSize    = 4
-	asteroidMaxSize    = 10
-	minimapScale       = 0.06
+	// 開始時の小惑星はプレイヤー周辺に出さない。最大形状半径＋自機半径＋余白を確保。
+	asteroidMinDist          = 450.0
+	asteroidMaxDist          = 1100.0
+	asteroidMinSize          = 4
+	asteroidMaxSize          = 10
+	minimapScale             = 0.06
+	collisionDamageThreshold = 1.0 // この相対速度未満ではダメージなし
+	collisionDamageFactor    = 3.0 // 相対速度1あたりのダメージ
+	collisionRestitution     = 0.6 // バウンスのエネルギー保持率
 )
 
 // Exploration は探索画面シーン。
@@ -65,6 +69,9 @@ func (e *Exploration) Update(d Director) error {
 	for _, a := range e.asteroids {
 		a.Update()
 	}
+
+	// 自機 ⇄ 小惑星の衝突解決（押し戻し＋反射＋ダメージ）
+	e.handlePlayerAsteroidCollisions()
 
 	// 発射（押しっぱなしでクールダウン許可分だけ発射）
 	if ebiten.IsKeyPressed(ebiten.KeySpace) {
@@ -128,6 +135,85 @@ func (e *Exploration) Update(d Director) error {
 	return nil
 }
 
+// handlePlayerAsteroidCollisions は自機の各パーツと各小惑星グリッドを
+// 円-円判定し、重なりを解消（押し戻し）、相対速度を反射、衝突相対速度に応じて
+// プレイヤーへダメージを与える。小惑星側は質量∞扱いで影響を受けない。
+func (e *Exploration) handlePlayerAsteroidCollisions() {
+	p := e.player
+	g := float64(entity.GridSize)
+	sumR := g // パーツ半径(g/2) + グリッド半径(g/2)
+
+	// 自機パーツのワールド位置を一度算出（角度はループ中変わらず、位置はその場で加算）
+	sSin, sCos := math.Sin(p.Angle), math.Cos(p.Angle)
+	type partOffset struct{ ox, oy float64 }
+	offsets := make([]partOffset, len(p.Parts))
+	for i, part := range p.Parts {
+		lx := float64(part.GX) * g
+		ly := float64(part.GY) * g
+		// 船体描画と同じ R(angle + π/2) ローカル→ワールド変換
+		offsets[i] = partOffset{
+			ox: -sSin*lx - sCos*ly,
+			oy: sCos*lx - sSin*ly,
+		}
+	}
+
+	for _, a := range e.asteroids {
+		aSin, aCos := math.Sin(a.Angle), math.Cos(a.Angle)
+		for i := range p.Parts {
+			pcx := p.X + offsets[i].ox
+			pcy := p.Y + offsets[i].oy
+
+			for _, gr := range a.Grids {
+				lgx := float64(gr.GX) * g
+				lgy := float64(gr.GY) * g
+				wgx := aCos*lgx - aSin*lgy
+				wgy := aSin*lgx + aCos*lgy
+				gcx := a.X + wgx
+				gcy := a.Y + wgy
+
+				dx := pcx - gcx
+				dy := pcy - gcy
+				dist := math.Hypot(dx, dy)
+				if dist >= sumR {
+					continue
+				}
+				if dist < 0.001 {
+					dx, dy, dist = 1, 0, 1
+				}
+				nx := dx / dist
+				ny := dy / dist
+				overlap := sumR - dist
+
+				// 重なりを解消（自機のみ動かす）
+				p.X += nx * overlap
+				p.Y += ny * overlap
+				pcx += nx * overlap
+				pcy += ny * overlap
+
+				// 相対速度の法線成分（負なら自機が小惑星に向かっている）
+				rvx := p.VX - a.VX
+				rvy := p.VY - a.VY
+				vNormal := rvx*nx + rvy*ny
+				if vNormal >= 0 {
+					continue
+				}
+
+				impactSpeed := -vNormal
+				if impactSpeed > collisionDamageThreshold {
+					dmg := int((impactSpeed - collisionDamageThreshold) * collisionDamageFactor)
+					p.Damage(dmg)
+				}
+
+				// 法線成分のみ反射（接線成分はそのまま残す＝かすめ続けない）
+				rvx -= (1 + collisionRestitution) * vNormal * nx
+				rvy -= (1 + collisionRestitution) * vNormal * ny
+				p.VX = a.VX + rvx
+				p.VY = a.VY + rvy
+			}
+		}
+	}
+}
+
 func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 	theme := d.Theme()
 	dst.Fill(theme.Background)
@@ -154,15 +240,19 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		b.Draw(dst, b.X-e.cameraX+cx, b.Y-e.cameraY+cy, e.player.VX, e.player.VY, theme)
 	}
 
-	// プレイヤー
-	e.player.DrawAt(dst, e.player.X-e.cameraX+cx, e.player.Y-e.cameraY+cy, theme)
+	// プレイヤー（被弾無敵中は数フレームおきに点滅）
+	if e.player.InvulnTimer == 0 || (e.player.InvulnTimer/4)%2 == 0 {
+		e.player.DrawAt(dst, e.player.X-e.cameraX+cx, e.player.Y-e.cameraY+cy, theme)
+	}
 
 	e.drawHUD(dst, theme, sw, sh)
 }
 
 func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
-	// ステータス（仮値）
-	ui.DrawText(dst, "HP 100   SHIELD 100   FUEL 100", 20, 20, 1.5, theme.Line)
+	// ステータス（HP は実値、それ以外は仮値）
+	ui.DrawText(dst,
+		fmt.Sprintf("HP %d/%d   SHIELD 100   FUEL 100", e.player.HP, e.player.MaxHP),
+		20, 20, 1.5, theme.Line)
 
 	// インベントリ
 	inv := e.player.Inventory
