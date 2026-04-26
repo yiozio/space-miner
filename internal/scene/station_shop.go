@@ -22,25 +22,25 @@ const (
 	shopSideHeight = shopGridRows*shopCellSize + (shopGridRows-1)*shopCellPad
 )
 
-// shopItem は店または自分の在庫の1スロットが保持するアイテム。
+// shopItem はスロット内アイテムの内容。
 type shopItem struct {
 	Name        string
 	Description string
 	Price       int
 	IsResource  bool
-	PartKind    entity.PartKind     // 非資源
-	ResType     entity.ResourceType // 資源
+	PartKind    entity.PartKind
+	ResType     entity.ResourceType
 }
 
-// shopSlot は1セルの内容。Quantity が 0 なら空セル扱い。
+// shopSlot は1セル。Quantity が 0 なら空。
 type shopSlot struct {
 	Item     shopItem
 	Quantity int
 }
 
 // StationShop はパーツ店舗シーン。
-// 画面左に店在庫の 4 列グリッド、画面右に自分の在庫の 4 列グリッド、
-// その間に取引サマリ、自分グリッドの右側にカーソル中アイテムの情報を表示する。
+// 左4列に店在庫、右4列に自分の在庫（resources + spare parts）、
+// 中央にセッション集計、右端にカーソル中アイテムの情報を表示する。
 type StationShop struct {
 	player      *entity.Player
 	shopSlots   [shopSlotCount]shopSlot
@@ -48,40 +48,62 @@ type StationShop struct {
 	side        int // 0 = shop, 1 = player
 	index       int // 0..shopSlotCount-1
 
-	// セッションサマリ（このシーンが開いている間の累計）
 	sessionBuyCount  int
 	sessionSellCount int
-	sessionNet       int // sells - buys（プレイヤー視点での増減）
+	sessionNet       int
 }
 
 // NewStationShop は店舗シーンを生成する。
-// 店在庫はサンプルパーツで初期化、自分在庫はプレイヤー所持資源から生成する。
+// 店在庫はサンプルパーツを固定初期化、自分側は毎フレーム refreshPlayerSlots で
+// プレイヤー状態から再構築する。
 func NewStationShop(p *entity.Player) *StationShop {
 	s := &StationShop{player: p}
-	s.shopSlots[0] = shopSlot{Item: shopItem{Name: "Gun", Description: "Forward-firing gun.", Price: 80, PartKind: entity.PartGun}, Quantity: 5}
-	s.shopSlots[1] = shopSlot{Item: shopItem{Name: "Thruster", Description: "Engine module.", Price: 120, PartKind: entity.PartThruster}, Quantity: 3}
-	s.shopSlots[2] = shopSlot{Item: shopItem{Name: "Cargo", Description: "Resource storage.", Price: 60, PartKind: entity.PartCargo}, Quantity: 6}
-	s.shopSlots[3] = shopSlot{Item: shopItem{Name: "Armor", Description: "Hardened plating.", Price: 100, PartKind: entity.PartArmor}, Quantity: 4}
-	s.shopSlots[4] = shopSlot{Item: shopItem{Name: "Auto-Aim", Description: "Auto-targets nearby asteroids.", Price: 250, PartKind: entity.PartAutoAim}, Quantity: 2}
-
-	for i, rt := range entity.AllResourceTypes() {
-		info := rt.Info()
-		s.playerSlots[i] = shopSlot{
-			Item: shopItem{
-				Name:        info.Name,
-				Description: info.Name + " ore. Mining material.",
-				Price:       priceForResource(rt),
-				IsResource:  true,
-				ResType:     rt,
-			},
-			Quantity: p.Inventory[rt],
-		}
-	}
+	s.shopSlots[0] = shopSlot{Item: shopParts(entity.PartGun, "Forward-firing gun."), Quantity: 5}
+	s.shopSlots[1] = shopSlot{Item: shopParts(entity.PartThruster, "Engine module."), Quantity: 3}
+	s.shopSlots[2] = shopSlot{Item: shopParts(entity.PartCargo, "Resource storage."), Quantity: 6}
+	s.shopSlots[3] = shopSlot{Item: shopParts(entity.PartArmor, "Hardened plating."), Quantity: 4}
+	s.shopSlots[4] = shopSlot{Item: shopParts(entity.PartAutoAim, "Auto-targets nearby asteroids."), Quantity: 2}
+	s.shopSlots[5] = shopSlot{Item: shopParts(entity.PartFuel, "Auxiliary fuel tank."), Quantity: 4}
+	s.shopSlots[6] = shopSlot{Item: shopParts(entity.PartShield, "Shield generator."), Quantity: 2}
+	s.refreshPlayerSlots()
 	return s
 }
 
-// priceForResource は資源1単位の売却価格。
-func priceForResource(r entity.ResourceType) int {
+// shopParts はパーツ種別から shopItem を組み立てる（共通価格を引く）。
+func shopParts(kind entity.PartKind, desc string) shopItem {
+	return shopItem{
+		Name:        entity.PartName(kind),
+		Description: desc,
+		Price:       partPrice(kind),
+		PartKind:    kind,
+	}
+}
+
+// partPrice はパーツ売買の共通価格。
+func partPrice(kind entity.PartKind) int {
+	switch kind {
+	case entity.PartGun:
+		return 80
+	case entity.PartThruster:
+		return 120
+	case entity.PartFuel:
+		return 70
+	case entity.PartCargo:
+		return 60
+	case entity.PartArmor:
+		return 100
+	case entity.PartShield:
+		return 150
+	case entity.PartAutoAim:
+		return 250
+	case entity.PartWarp:
+		return 400
+	}
+	return 30
+}
+
+// resourcePrice は資源1単位の価格。
+func resourcePrice(r entity.ResourceType) int {
 	switch r {
 	case entity.ResourceIron:
 		return 5
@@ -93,6 +115,49 @@ func priceForResource(r entity.ResourceType) int {
 	return 1
 }
 
+// refreshPlayerSlots はプレイヤーの現在状態から自分グリッドを再構築する。
+// 資源を上から、スペアパーツをその後ろに並べる。
+func (ss *StationShop) refreshPlayerSlots() {
+	for i := range ss.playerSlots {
+		ss.playerSlots[i] = shopSlot{}
+	}
+	idx := 0
+	for _, rt := range entity.AllResourceTypes() {
+		qty := ss.player.Inventory[rt]
+		if qty <= 0 || idx >= shopSlotCount {
+			continue
+		}
+		info := rt.Info()
+		ss.playerSlots[idx] = shopSlot{
+			Item: shopItem{
+				Name:        info.Name,
+				Description: info.Name + " ore. Mining material.",
+				Price:       resourcePrice(rt),
+				IsResource:  true,
+				ResType:     rt,
+			},
+			Quantity: qty,
+		}
+		idx++
+	}
+	for _, kind := range entity.AllPlaceablePartKinds() {
+		qty := ss.player.PartsInventory[kind]
+		if qty <= 0 || idx >= shopSlotCount {
+			continue
+		}
+		ss.playerSlots[idx] = shopSlot{
+			Item: shopItem{
+				Name:        entity.PartName(kind),
+				Description: entity.PartName(kind) + " part (spare).",
+				Price:       partPrice(kind),
+				PartKind:    kind,
+			},
+			Quantity: qty,
+		}
+		idx++
+	}
+}
+
 func (ss *StationShop) currentSlot() *shopSlot {
 	if ss.side == 0 {
 		return &ss.shopSlots[ss.index]
@@ -101,6 +166,8 @@ func (ss *StationShop) currentSlot() *shopSlot {
 }
 
 func (ss *StationShop) Update(d Director) error {
+	ss.refreshPlayerSlots()
+
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		d.Pop()
 		return nil
@@ -146,14 +213,14 @@ func (ss *StationShop) Update(d Director) error {
 	return nil
 }
 
-// transferOne はカーソル位置のアイテムを1つだけ反対側へ移す（=購入 or 売却）。
+// transferOne はカーソル位置のアイテムを1つだけ反対側に移す（=購入 or 売却）。
+// プレイヤーの所持状態（Inventory / PartsInventory / Credits）に直接反映される。
 func (ss *StationShop) transferOne() {
 	slot := ss.currentSlot()
 	if slot.Quantity <= 0 {
 		return
 	}
 	if ss.side == 0 {
-		// Buy: shop → player
 		if ss.player.Credits < slot.Item.Price {
 			return
 		}
@@ -161,35 +228,20 @@ func (ss *StationShop) transferOne() {
 		ss.sessionBuyCount++
 		ss.sessionNet -= slot.Item.Price
 		slot.Quantity--
-		ss.addPartToPlayerSlots(slot.Item)
+		if slot.Item.IsResource {
+			ss.player.Inventory[slot.Item.ResType]++
+		} else {
+			ss.player.PartsInventory[slot.Item.PartKind]++
+		}
 	} else {
-		// Sell: player → shop
 		ss.player.Credits += slot.Item.Price
 		ss.sessionSellCount++
 		ss.sessionNet += slot.Item.Price
 		slot.Quantity--
 		if slot.Item.IsResource {
 			ss.player.Inventory[slot.Item.ResType]--
-		}
-	}
-}
-
-// addPartToPlayerSlots は購入したパーツを自分インベントリの空きスロットに追加する。
-// 既に同種パーツのスロットがあれば数量加算、なければ新規スロット。
-func (ss *StationShop) addPartToPlayerSlots(it shopItem) {
-	for i := range ss.playerSlots {
-		ps := &ss.playerSlots[i]
-		if ps.Quantity > 0 && !ps.Item.IsResource && ps.Item.PartKind == it.PartKind {
-			ps.Quantity++
-			return
-		}
-	}
-	for i := range ss.playerSlots {
-		ps := &ss.playerSlots[i]
-		if ps.Quantity == 0 {
-			ps.Item = it
-			ps.Quantity = 1
-			return
+		} else {
+			ss.player.PartsInventory[slot.Item.PartKind]--
 		}
 	}
 }
@@ -201,13 +253,11 @@ func (ss *StationShop) Draw(dst *ebiten.Image, d Director) {
 	vector.DrawFilledRect(dst, 0, 0, float32(sw), float32(sh),
 		color.NRGBA{0, 0, 0, 220}, false)
 
-	// ヘッダ
 	headerScale := 3.0
 	header := "PARTS SHOP"
 	hw, hh := ui.MeasureText(header, headerScale)
 	ui.DrawText(dst, header, (float64(sw)-hw)/2, 24, headerScale, theme.Line)
 
-	// レイアウト
 	gap := 24.0
 	summaryW := 200.0
 	infoW := 280.0
@@ -220,25 +270,18 @@ func (ss *StationShop) Draw(dst *ebiten.Image, d Director) {
 	playerX := summaryX + summaryW + gap
 	infoX := playerX + float64(shopSideWidth) + gap
 
-	// セクションラベル
 	ui.DrawText(dst, "SHOP", shopX, sideY-22, 1.6, theme.LineDim)
 	ui.DrawText(dst, "INVENTORY", playerX, sideY-22, 1.6, theme.LineDim)
 
-	// 左右グリッド
 	ss.drawGrid(dst, theme, shopX, sideY, ss.shopSlots[:], ss.side == 0)
 	ss.drawGrid(dst, theme, playerX, sideY, ss.playerSlots[:], ss.side == 1)
-
-	// 中央サマリ
 	ss.drawSummary(dst, theme, summaryX, sideY)
-	// 右側インフォ
 	ss.drawInfo(dst, theme, infoX, sideY, infoW)
 
 	ui.DrawText(dst, "[ WASD/Arrows: Move    Tab: Switch Side    Enter/Space: Buy/Sell    Esc: Leave ]",
 		20, float64(sh)-30, 1.4, theme.LineDim)
 }
 
-// drawGrid は与えられたスロット群を縦横グリッド状に描画する。
-// focused が true なら現在カーソル位置に強調枠を描く。
 func (ss *StationShop) drawGrid(dst *ebiten.Image, theme *ui.Theme, x, y float64, slots []shopSlot, focused bool) {
 	cs := float64(shopCellSize)
 	for i := range slots {
@@ -246,28 +289,37 @@ func (ss *StationShop) drawGrid(dst *ebiten.Image, theme *ui.Theme, x, y float64
 		row := i / shopGridCols
 		cx := x + float64(col)*(cs+shopCellPad)
 		cy := y + float64(row)*(cs+shopCellPad)
-		// 枠
 		vector.StrokeRect(dst, float32(cx), float32(cy), float32(cs), float32(cs), 1, theme.LineDim, false)
-		// 中身（簡易: 名前の最初の数文字をアイコン代わりに表示）
 		if slots[i].Quantity > 0 {
-			label := slots[i].Item.Name
-			if len(label) > 4 {
-				label = label[:4]
-			}
-			lw, lh := ui.MeasureText(label, 2.0)
-			ui.DrawText(dst, label, cx+(cs-lw)/2, cy+(cs-lh)/2-4, 2.0, theme.Line)
+			ss.drawSlotIcon(dst, theme, cx, cy, cs, slots[i])
 			qty := fmt.Sprintf("x%d", slots[i].Quantity)
 			qw, _ := ui.MeasureText(qty, 1.0)
 			ui.DrawText(dst, qty, cx+cs-qw-4, cy+cs-12, 1.0, theme.LineDim)
 		}
-		// カーソル
 		if focused && i == ss.index {
 			vector.StrokeRect(dst, float32(cx-2), float32(cy-2), float32(cs+4), float32(cs+4), 2, theme.Line, false)
 		}
 	}
 }
 
-// drawSummary は中央のセッション集計を描画する。
+// drawSlotIcon は資源なら名前先頭、パーツならミニアイコンをセル中央に描く。
+func (ss *StationShop) drawSlotIcon(dst *ebiten.Image, theme *ui.Theme, cx, cy, cs float64, s shopSlot) {
+	if s.Item.IsResource {
+		label := s.Item.Name
+		if len(label) > 4 {
+			label = label[:4]
+		}
+		lw, lh := ui.MeasureText(label, 2.0)
+		ui.DrawText(dst, label, cx+(cs-lw)/2, cy+(cs-lh)/2-4, 2.0, theme.Line)
+		return
+	}
+	// パーツはミニアイコン
+	iconCell := float32(cs * 0.8)
+	ix := float32(cx) + (float32(cs)-iconCell)/2
+	iy := float32(cy) + (float32(cs)-iconCell)/2 - 4
+	entity.DrawPart(dst, entity.Part{Kind: s.Item.PartKind}, ix, iy, iconCell, theme)
+}
+
 func (ss *StationShop) drawSummary(dst *ebiten.Image, theme *ui.Theme, x, y float64) {
 	ui.DrawText(dst, "SESSION", x, y, 1.6, theme.Line)
 	lineY := y + 32
@@ -284,7 +336,6 @@ func (ss *StationShop) drawSummary(dst *ebiten.Image, theme *ui.Theme, x, y floa
 	ui.DrawText(dst, fmt.Sprintf("CR %d", ss.player.Credits), x, lineY, 1.4, theme.Line)
 }
 
-// drawInfo は右側のカーソル中アイテム詳細を描画する。
 func (ss *StationShop) drawInfo(dst *ebiten.Image, theme *ui.Theme, x, y, _ float64) {
 	ui.DrawText(dst, "INFO", x, y, 1.6, theme.Line)
 	slot := ss.currentSlot()
