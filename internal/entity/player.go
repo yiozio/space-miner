@@ -23,14 +23,15 @@ const (
 // Player はプレイヤー機。Ship に操作・発射・インベントリ・HP・燃料・クレジットを加えたもの。
 type Player struct {
 	Ship
-	HP          int
-	MaxHP       int
-	Fuel        float64
-	MaxFuel     float64
-	Credits     int
-	InvulnTimer int // 被弾後の残無敵フレーム（描画フラッシュにも使う）
-	fireTimer   int
-	Inventory   map[ResourceType]int
+	HP             int
+	MaxHP          int
+	Fuel           float64
+	MaxFuel        float64
+	Credits        int
+	InvulnTimer    int // 被弾後の残無敵フレーム（描画フラッシュにも使う）
+	fireTimer      int
+	Inventory      map[ResourceType]int // 資源
+	PartsInventory map[PartKind]int     // 船に未取付のスペアパーツ
 }
 
 // NewPlayerPebble は初期機体「Pebble」のプレイヤーを生成する。
@@ -47,12 +48,13 @@ func NewPlayerPebble() *Player {
 			},
 			Angle: -math.Pi / 2, // 起動時はビジュアル的に上向き
 		},
-		HP:        PlayerHPDefault,
-		MaxHP:     PlayerHPDefault,
-		Fuel:      PlayerFuelDefault,
-		MaxFuel:   PlayerFuelDefault,
-		Credits:   PlayerCreditsDefault,
-		Inventory: make(map[ResourceType]int),
+		HP:             PlayerHPDefault,
+		MaxHP:          PlayerHPDefault,
+		Fuel:           PlayerFuelDefault,
+		MaxFuel:        PlayerFuelDefault,
+		Credits:        PlayerCreditsDefault,
+		Inventory:      make(map[ResourceType]int),
+		PartsInventory: make(map[PartKind]int),
 	}
 }
 

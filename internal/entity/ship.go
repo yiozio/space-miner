@@ -34,6 +34,13 @@ type Ship struct {
 	imageOffsetY float64 // 画像内のコックピット中心 Y
 }
 
+// InvalidateImage は船体画像のキャッシュを破棄する。
+// パーツ構成が変わった（編集された）場合に呼ぶ。
+func (s *Ship) InvalidateImage() {
+	s.cachedTheme = nil
+	s.image = nil
+}
+
 // ensureImage はテーマが変わっていれば船体画像を作り直す。
 func (s *Ship) ensureImage(theme *ui.Theme) {
 	if s.cachedTheme == theme && s.image != nil {
@@ -46,7 +53,7 @@ func (s *Ship) ensureImage(theme *ui.Theme) {
 	for _, p := range s.Parts {
 		x := float32((p.GX - minGX) * GridSize)
 		y := float32((p.GY - minGY) * GridSize)
-		drawPart(img, p, x, y, theme)
+		DrawPart(img, p, x, y, float32(GridSize), theme)
 	}
 	s.image = img
 	// コックピット (GX=0, GY=0) のセル中心を回転中心とする
