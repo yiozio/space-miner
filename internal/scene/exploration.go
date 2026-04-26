@@ -61,6 +61,11 @@ func (e *Exploration) Update(d Director) error {
 
 	e.player.Update()
 
+	// 小惑星の浮遊・自転
+	for _, a := range e.asteroids {
+		a.Update()
+	}
+
 	// 発射（押しっぱなしでクールダウン許可分だけ発射）
 	if ebiten.IsKeyPressed(ebiten.KeySpace) {
 		e.bullets = append(e.bullets, e.player.Shoot()...)
