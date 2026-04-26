@@ -12,16 +12,22 @@ const (
 	playerBoostMultiplier = 2.5
 	playerMaxSpeed        = 8.0
 	playerBoostMaxSpeed   = 14.0
-	playerFireCooldown    = 12  // フレーム単位（60fps で約5発/秒）
-	PlayerHPDefault       = 100 // 初期 HP / 最大 HP
-	PlayerInvulnFrames    = 30  // 被弾後の無敵フレーム
+	playerFireCooldown    = 12   // フレーム単位（60fps で約5発/秒）
+	playerBoostFuelCost   = 0.30 // ブースト1フレーム分の燃料消費（60fps で約18/秒）
+	PlayerHPDefault       = 100  // 初期 HP / 最大 HP
+	PlayerFuelDefault     = 100  // 初期燃料 / 最大燃料
+	PlayerCreditsDefault  = 100  // 初期所持クレジット
+	PlayerInvulnFrames    = 30   // 被弾後の無敵フレーム
 )
 
-// Player はプレイヤー機。Ship に操作・発射・インベントリ・HP を加えたもの。
+// Player はプレイヤー機。Ship に操作・発射・インベントリ・HP・燃料・クレジットを加えたもの。
 type Player struct {
 	Ship
 	HP          int
 	MaxHP       int
+	Fuel        float64
+	MaxFuel     float64
+	Credits     int
 	InvulnTimer int // 被弾後の残無敵フレーム（描画フラッシュにも使う）
 	fireTimer   int
 	Inventory   map[ResourceType]int
@@ -43,6 +49,9 @@ func NewPlayerPebble() *Player {
 		},
 		HP:        PlayerHPDefault,
 		MaxHP:     PlayerHPDefault,
+		Fuel:      PlayerFuelDefault,
+		MaxFuel:   PlayerFuelDefault,
+		Credits:   PlayerCreditsDefault,
 		Inventory: make(map[ResourceType]int),
 	}
 }
@@ -61,9 +70,15 @@ func (p *Player) Update() {
 	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
 		accel = playerThrustAccel
 		p.ThrustState = ThrustOn
-		if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
+		// ブーストは燃料が残っているときのみ有効
+		boostHeld := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
+		if boostHeld && p.Fuel > 0 {
 			accel *= playerBoostMultiplier
 			p.ThrustState = ThrustBoost
+			p.Fuel -= playerBoostFuelCost
+			if p.Fuel < 0 {
+				p.Fuel = 0
+			}
 		}
 	}
 	p.VX += accel * math.Cos(p.Angle)

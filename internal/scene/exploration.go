@@ -26,18 +26,20 @@ const (
 )
 
 // Exploration は探索画面シーン。
-// プレイヤー機を中心に俯瞰描画し、小惑星・弾・資源ピックアップを管理する。
+// プレイヤー機を中心に俯瞰描画し、小惑星・弾・資源ピックアップ・ステーションを管理する。
 type Exploration struct {
-	player    *entity.Player
-	cameraX   float64
-	cameraY   float64
-	starfield *starfield
-	asteroids []*entity.Asteroid
-	bullets   []entity.Bullet
-	pickups   []entity.Pickup
+	player     *entity.Player
+	cameraX    float64
+	cameraY    float64
+	starfield  *starfield
+	asteroids  []*entity.Asteroid
+	bullets    []entity.Bullet
+	pickups    []entity.Pickup
+	stations   []*entity.Station
+	activeDock *entity.Station // 現在ドック範囲内のステーション。nil なら接岸不可
 }
 
-// NewExploration は新しい探索シーンを生成し、初期小惑星をばら撒く。
+// NewExploration は新しい探索シーンを生成し、初期小惑星とステーションを配置する。
 func NewExploration() *Exploration {
 	e := &Exploration{
 		player:    entity.NewPlayerPebble(),
@@ -52,6 +54,8 @@ func NewExploration() *Exploration {
 		size := asteroidMinSize + rng.Intn(asteroidMaxSize-asteroidMinSize+1)
 		e.asteroids = append(e.asteroids, entity.NewAsteroid(rng.Int63(), x, y, size))
 	}
+	// 起点近くに 1 基の宇宙ステーションを配置（自機開始位置から見えやすい距離）
+	e.stations = append(e.stations, entity.NewStation(300, -250))
 	return e
 }
 
@@ -72,6 +76,22 @@ func (e *Exploration) Update(d Director) error {
 
 	// 自機 ⇄ 小惑星の衝突解決（押し戻し＋反射＋ダメージ）
 	e.handlePlayerAsteroidCollisions()
+
+	// ステーションのパルス更新とドック近接判定
+	e.activeDock = nil
+	for _, s := range e.stations {
+		s.Update()
+		if e.activeDock == nil && s.IsPlayerInDock(e.player.X, e.player.Y) {
+			e.activeDock = s
+		}
+	}
+
+	// ドック中に Space 押下: 発射ではなくステーションメニューを開く
+	if e.activeDock != nil && inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		e.player.ThrustState = entity.ThrustOff
+		d.Push(NewStationMenu(e.player))
+		return nil
+	}
 
 	// 発射（押しっぱなしでクールダウン許可分だけ発射）
 	if ebiten.IsKeyPressed(ebiten.KeySpace) {
@@ -223,6 +243,11 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 
 	e.starfield.draw(dst, e.cameraX, e.cameraY, theme)
 
+	// 宇宙ステーション（背景扱い）
+	for _, s := range e.stations {
+		s.Draw(dst, s.X-e.cameraX+cx, s.Y-e.cameraY+cy, theme)
+	}
+
 	// 小惑星
 	for _, a := range e.asteroids {
 		a.Draw(dst, a.X-e.cameraX+cx, a.Y-e.cameraY+cy)
@@ -241,17 +266,30 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 	}
 
 	// プレイヤー（被弾無敵中は数フレームおきに点滅）
+	psx := e.player.X - e.cameraX + cx
+	psy := e.player.Y - e.cameraY + cy
 	if e.player.InvulnTimer == 0 || (e.player.InvulnTimer/4)%2 == 0 {
-		e.player.DrawAt(dst, e.player.X-e.cameraX+cx, e.player.Y-e.cameraY+cy, theme)
+		e.player.DrawAt(dst, psx, psy, theme)
+	}
+
+	// ドック近接プロンプト
+	if e.activeDock != nil {
+		prompt := "[ Space ] DOCK"
+		promptScale := 1.6
+		pw, _ := ui.MeasureText(prompt, promptScale)
+		ui.DrawText(dst, prompt, psx-pw/2, psy+72, promptScale, theme.Line)
 	}
 
 	e.drawHUD(dst, theme, sw, sh)
 }
 
 func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
-	// ステータス（HP は実値、それ以外は仮値）
+	// ステータス
 	ui.DrawText(dst,
-		fmt.Sprintf("HP %d/%d   SHIELD 100   FUEL 100", e.player.HP, e.player.MaxHP),
+		fmt.Sprintf("HP %d/%d   FUEL %d/%d   CR %d",
+			e.player.HP, e.player.MaxHP,
+			int(e.player.Fuel), int(e.player.MaxFuel),
+			e.player.Credits),
 		20, 20, 1.5, theme.Line)
 
 	// インベントリ
@@ -286,7 +324,18 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		}
 		vector.DrawFilledRect(dst, nx-1, ny-1, 2, 2, theme.LineDim, false)
 	}
+	// ステーション（小さな四角で目立たせる）
+	for _, s := range e.stations {
+		dx := (s.X - e.cameraX) * minimapScale
+		dy := (s.Y - e.cameraY) * minimapScale
+		nx := mx + miniW/2 + float32(dx)
+		ny := my + miniH/2 + float32(dy)
+		if nx < mx || nx > mx+miniW || ny < my || ny > my+miniH {
+			continue
+		}
+		vector.StrokeRect(dst, nx-3, ny-3, 6, 6, 1, theme.Line, false)
+	}
 
-	ui.DrawText(dst, "[ WASD: Move    Shift: Boost    Space: Fire    Esc: Menu ]",
+	ui.DrawText(dst, "[ WASD: Move    Shift: Boost    Space: Fire / Dock    Esc: Menu ]",
 		20, float64(sh)-30, 1.5, theme.LineDim)
 }
