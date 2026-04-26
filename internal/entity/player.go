@@ -12,14 +12,19 @@ const (
 	playerBoostMultiplier = 2.5
 	playerMaxSpeed        = 8.0
 	playerBoostMaxSpeed   = 14.0
-	playerFireCooldown    = 12 // フレーム単位（60fps で約5発/秒）
+	playerFireCooldown    = 12  // フレーム単位（60fps で約5発/秒）
+	PlayerHPDefault       = 100 // 初期 HP / 最大 HP
+	PlayerInvulnFrames    = 30  // 被弾後の無敵フレーム
 )
 
-// Player はプレイヤー機。Ship に操作・発射・インベントリを加えたもの。
+// Player はプレイヤー機。Ship に操作・発射・インベントリ・HP を加えたもの。
 type Player struct {
 	Ship
-	fireTimer int
-	Inventory map[ResourceType]int
+	HP          int
+	MaxHP       int
+	InvulnTimer int // 被弾後の残無敵フレーム（描画フラッシュにも使う）
+	fireTimer   int
+	Inventory   map[ResourceType]int
 }
 
 // NewPlayerPebble は初期機体「Pebble」のプレイヤーを生成する。
@@ -36,6 +41,8 @@ func NewPlayerPebble() *Player {
 			},
 			Angle: -math.Pi / 2, // 起動時はビジュアル的に上向き
 		},
+		HP:        PlayerHPDefault,
+		MaxHP:     PlayerHPDefault,
 		Inventory: make(map[ResourceType]int),
 	}
 }
@@ -78,6 +85,22 @@ func (p *Player) Update() {
 	if p.fireTimer > 0 {
 		p.fireTimer--
 	}
+	if p.InvulnTimer > 0 {
+		p.InvulnTimer--
+	}
+}
+
+// Damage は HP を減らし、無敵フレームを設定する。
+// 無敵中、もしくは amount が非正なら何もしない。
+func (p *Player) Damage(amount int) {
+	if p.InvulnTimer > 0 || amount <= 0 {
+		return
+	}
+	p.HP -= amount
+	if p.HP < 0 {
+		p.HP = 0
+	}
+	p.InvulnTimer = PlayerInvulnFrames
 }
 
 // Shoot はクールダウンが許せば各 Gun パーツから1発ずつ弾を発射する。
