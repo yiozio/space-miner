@@ -43,7 +43,7 @@ type Exploration struct {
 func NewExploration() *Exploration {
 	e := &Exploration{
 		player:    entity.NewPlayerPebble(),
-		starfield: newStarfield(1, 400, 4000),
+		starfield: newStarfield(1),
 	}
 	rng := rand.New(rand.NewSource(2))
 	for i := 0; i < startAsteroidCount; i++ {
