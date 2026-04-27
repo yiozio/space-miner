@@ -14,6 +14,7 @@ const (
 	playerBoostMaxSpeed   = 14.0
 	playerFireCooldown    = 12   // フレーム単位（60fps で約5発/秒）
 	playerBoostFuelCost   = 0.30 // ブースト1フレーム分の燃料消費（60fps で約18/秒）
+	playerOverspeedDecel  = 0.10 // 通常最高速度を超えた分を毎フレームこれだけ削る（thrustFactor 倍でスケール）
 	PlayerHPDefault       = 100  // 初期 HP / 最大 HP
 	PlayerFuelDefault     = 100  // 初期燃料 / 最大燃料
 	PlayerCreditsDefault  = 100  // 初期所持クレジット
@@ -32,6 +33,8 @@ type Player struct {
 	fireTimer      int
 	Inventory      map[ResourceType]int // 資源
 	PartsInventory map[PartKind]int     // 船に未取付のスペアパーツ
+	// 動的なスピード上限。ブースト時に boost 上限へ瞬時上昇し、解除後は徐々に通常上限へ減衰する。
+	speedCap float64
 }
 
 // NewPlayerPebble は初期機体「Pebble」のプレイヤーを生成する。
@@ -58,7 +61,21 @@ func NewPlayerPebble() *Player {
 	}
 }
 
+// thrusterCount は機体に取り付けられている Thruster パーツの数を返す。
+// 加速度・最高速度はこの数に比例する。
+func (p *Player) thrusterCount() int {
+	n := 0
+	for _, part := range p.Parts {
+		if part.Kind == PartThruster {
+			n++
+		}
+	}
+	return n
+}
+
 // Update はキー入力に応じて機体を1フレーム動かす。発射は Shoot で別途行う。
+// 加速度・最高速度は搭載 Thruster 数に線形でスケールする。
+// Thruster が 0 のときは推力ゼロだが、既存の慣性は保持する。
 func (p *Player) Update() {
 	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
 		p.Angle -= playerRotateSpeed
@@ -67,10 +84,13 @@ func (p *Player) Update() {
 		p.Angle += playerRotateSpeed
 	}
 
+	thrusters := p.thrusterCount()
+	thrustFactor := float64(thrusters)
+
 	accel := 0.0
 	p.ThrustState = ThrustOff
-	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
-		accel = playerThrustAccel
+	if thrusters > 0 && (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp)) {
+		accel = playerThrustAccel * thrustFactor
 		p.ThrustState = ThrustOn
 		// ブーストは燃料が残っているときのみ有効
 		boostHeld := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
@@ -83,17 +103,34 @@ func (p *Player) Update() {
 			}
 		}
 	}
+	// 動的スピード上限の更新。
+	// ブースト中: boost 上限に瞬時セット。
+	// 非ブースト時: 通常上限まで毎フレーム少しずつ降下、超えていなければ即時通常上限。
+	if thrusters > 0 {
+		normalLimit := playerMaxSpeed * thrustFactor
+		if p.ThrustState == ThrustBoost {
+			p.speedCap = playerBoostMaxSpeed * thrustFactor
+		} else if p.speedCap > normalLimit {
+			p.speedCap -= playerOverspeedDecel * thrustFactor
+			if p.speedCap < normalLimit {
+				p.speedCap = normalLimit
+			}
+		} else {
+			p.speedCap = normalLimit
+		}
+	}
+
 	p.VX += accel * math.Cos(p.Angle)
 	p.VY += accel * math.Sin(p.Angle)
 
-	speed := math.Hypot(p.VX, p.VY)
-	limit := playerMaxSpeed
-	if p.ThrustState == ThrustBoost {
-		limit = playerBoostMaxSpeed
-	}
-	if speed > limit {
-		p.VX = p.VX / speed * limit
-		p.VY = p.VY / speed * limit
+	// Thruster がある場合のみ speedCap でハードクランプ。
+	// 通常加速で抜けないようにここでクランプを効かせる。
+	if thrusters > 0 {
+		speed := math.Hypot(p.VX, p.VY)
+		if speed > p.speedCap {
+			p.VX = p.VX / speed * p.speedCap
+			p.VY = p.VY / speed * p.speedCap
+		}
 	}
 
 	p.X += p.VX
