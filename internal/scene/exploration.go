@@ -44,6 +44,7 @@ type Exploration struct {
 	activeDock *entity.Station // 現在ドック範囲内のステーション。nil なら接岸不可
 	world      *entity.World
 	spawnRng   *rand.Rand
+	lastMap    *entity.FullMap // 最後に入った FullMap。区画外でも保持し、全体マップ表示の対象とする
 }
 
 // NewExploration は新しい探索シーンを生成する。
@@ -58,6 +59,8 @@ func NewExploration() *Exploration {
 	}
 	// 起点近くに 1 基の宇宙ステーションを配置（このステーションが起点 FullMap の中心）
 	e.stations = append(e.stations, entity.NewStation(stationX, stationY))
+	// 開始時点でいる FullMap を記録（通常は起点 FullMap）
+	e.lastMap = e.world.Containing(e.player.X, e.player.Y)
 	return e
 }
 
@@ -145,7 +148,19 @@ func (e *Exploration) Update(d Director) error {
 		return nil
 	}
 
+	// 全体マップ（最後に入った FullMap を確認）
+	if inpututil.IsKeyJustPressed(ebiten.KeyM) || inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+		e.player.ThrustState = entity.ThrustOff
+		d.Push(NewWorldMapView(e.lastMap, e.stations, e.player.X, e.player.Y))
+		return nil
+	}
+
 	e.player.Update()
+
+	// 現在いる FullMap を更新（区画外なら直前の値を保持）
+	if m := e.world.Containing(e.player.X, e.player.Y); m != nil {
+		e.lastMap = m
+	}
 
 	// ゾーンに応じた小惑星のスポーン（フレームあたり最大 1 体）
 	e.trySpawnAsteroid()
@@ -423,6 +438,6 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		vector.StrokeRect(dst, nx-3, ny-3, 6, 6, 1, theme.Line, false)
 	}
 
-	ui.DrawText(dst, "[ WASD: Move    Shift: Boost    Space: Fire / Dock    Esc: Menu ]",
+	ui.DrawText(dst, "[ WASD: Move    Shift: Boost    Space: Fire / Dock    M: Map    Esc: Menu ]",
 		20, float64(sh)-30, 1.5, theme.LineDim)
 }

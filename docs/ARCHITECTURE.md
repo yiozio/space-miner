@@ -62,6 +62,7 @@ space-miner/
 - `StateDialog`: 会話・通信イベント
 - `StateMenu`: ゲーム中ポーズメニュー（直前画面の上にオーバーレイ表示）
 - `StateSettings`: 設定画面（タイトル / メニュー双方から到達）
+- `StateWorldMap`: 全体マップ画面（探索の上にオーバーレイ表示。最後に入った FullMap を俯瞰）
 
 ### 遷移概要
 ```
