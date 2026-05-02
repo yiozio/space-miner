@@ -14,16 +14,20 @@ import (
 )
 
 const (
-	startAsteroidCount = 8
-	// 開始時の小惑星はプレイヤー周辺に出さない。最大形状半径＋自機半径＋余白を確保。
-	asteroidMinDist          = 450.0
-	asteroidMaxDist          = 1100.0
-	asteroidMinSize          = 4
-	asteroidMaxSize          = 10
+	asteroidMinSize = 4
+	asteroidMaxSize = 10
+	// ミニマップが映す半径は 180/2/0.06=1500px だが、対角線方向の角は ~2120px まで届く。
+	// 角にも掛からないよう、生成リングはこれより外側で取る。
+	asteroidSpawnRingMin = 2200.0
+	asteroidSpawnRingMax = 3000.0
+	// プレイヤーから十分離れた小惑星は破棄し、再生成に任せる。
+	asteroidCullDist         = 4000.0
 	minimapScale             = 0.06
 	collisionDamageThreshold = 1.0 // この相対速度未満ではダメージなし
 	collisionDamageFactor    = 3.0 // 相対速度1あたりのダメージ
 	collisionRestitution     = 0.6 // バウンスのエネルギー保持率
+	// ゾーン中心へ寄せる初速。漂流上限の範囲内に収まる小さな値。
+	asteroidInboundDrift = 0.2
 )
 
 // Exploration は探索画面シーン。
@@ -38,26 +42,99 @@ type Exploration struct {
 	pickups    []entity.Pickup
 	stations   []*entity.Station
 	activeDock *entity.Station // 現在ドック範囲内のステーション。nil なら接岸不可
+	world      *entity.World
+	spawnRng   *rand.Rand
 }
 
-// NewExploration は新しい探索シーンを生成し、初期小惑星とステーションを配置する。
+// NewExploration は新しい探索シーンを生成する。
+// 小惑星はゾーン定義に従って実行時に逐次スポーンされるため、開始時には生成しない。
 func NewExploration() *Exploration {
+	const stationX, stationY = 300.0, -250.0
 	e := &Exploration{
 		player:    entity.NewPlayerPebble(),
 		starfield: newStarfield(1),
+		world:     defaultWorld(stationX, stationY),
+		spawnRng:  rand.New(rand.NewSource(2)),
 	}
-	rng := rand.New(rand.NewSource(2))
-	for i := 0; i < startAsteroidCount; i++ {
-		ang := rng.Float64() * math.Pi * 2
-		dist := asteroidMinDist + rng.Float64()*(asteroidMaxDist-asteroidMinDist)
-		x := math.Cos(ang) * dist
-		y := math.Sin(ang) * dist
-		size := asteroidMinSize + rng.Intn(asteroidMaxSize-asteroidMinSize+1)
-		e.asteroids = append(e.asteroids, entity.NewAsteroid(rng.Int63(), x, y, size))
-	}
-	// 起点近くに 1 基の宇宙ステーションを配置（自機開始位置から見えやすい距離）
-	e.stations = append(e.stations, entity.NewStation(300, -250))
+	// 起点近くに 1 基の宇宙ステーションを配置（このステーションが起点 FullMap の中心）
+	e.stations = append(e.stations, entity.NewStation(stationX, stationY))
 	return e
+}
+
+// defaultWorld は初期世界を返す。だだっ広い World の中に、
+// 起点ステーションを中心とする 60000x60000 の FullMap を 1 つ配置する。
+// （遠方の別 FullMap は将来追加。区画間は空虚で、ワープか忍耐強い航行で到達する想定）
+// ゾーンは 4 つ：起点近くに鉄のみ x2、中盤に鉄+氷、区画の遠い角に水晶+氷。
+func defaultWorld(stationX, stationY float64) *entity.World {
+	return &entity.World{
+		Maps: []entity.FullMap{
+			{
+				CX: stationX, CY: stationY,
+				HalfW: 30000, HalfH: 30000,
+				Zones: []entity.ResourceZone{
+					{
+						CX: 1500, CY: -800, Radius: 4500, MaxAsteroids: 12,
+						Mix: []entity.ResourceWeight{
+							{Resource: entity.ResourceIron, Weight: 1},
+						},
+					},
+					{
+						CX: -2500, CY: 1800, Radius: 4500, MaxAsteroids: 10,
+						Mix: []entity.ResourceWeight{
+							{Resource: entity.ResourceIron, Weight: 1},
+						},
+					},
+					{
+						CX: 9000, CY: 6000, Radius: 7000, MaxAsteroids: 14,
+						Mix: []entity.ResourceWeight{
+							{Resource: entity.ResourceIron, Weight: 2},
+							{Resource: entity.ResourceIce, Weight: 1},
+						},
+					},
+					{
+						CX: -25000, CY: 25000, Radius: 9000, MaxAsteroids: 16,
+						Mix: []entity.ResourceWeight{
+							{Resource: entity.ResourceCrystal, Weight: 2},
+							{Resource: entity.ResourceIce, Weight: 1},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// trySpawnAsteroid は現フレームの生成上限に達していなければ、
+// ミニマップ外のリング上で全体マップ内・ゾーン内の点を選んで小惑星を 1 つ追加する。
+// 生成位置で重なるゾーンの素材重みを合算して 1 素材を抽選する。
+func (e *Exploration) trySpawnAsteroid() {
+	cap := e.world.SpawnCap(e.player.X, e.player.Y)
+	if len(e.asteroids) >= cap {
+		return
+	}
+	for tries := 0; tries < 8; tries++ {
+		ang := e.spawnRng.Float64() * math.Pi * 2
+		dist := asteroidSpawnRingMin + e.spawnRng.Float64()*(asteroidSpawnRingMax-asteroidSpawnRingMin)
+		x := e.player.X + math.Cos(ang)*dist
+		y := e.player.Y + math.Sin(ang)*dist
+		if !e.world.InBounds(x, y) {
+			continue
+		}
+		res, ok := e.world.PickResource(x, y, e.spawnRng)
+		if !ok {
+			continue
+		}
+		size := asteroidMinSize + e.spawnRng.Intn(asteroidMaxSize-asteroidMinSize+1)
+		a := entity.NewAsteroid(e.spawnRng.Int63(), x, y, size, res)
+		// 生成直後にプレイヤー方向へ軽く寄せ、ミニマップ内に流入してくる挙動を作る
+		toX, toY := e.player.X-x, e.player.Y-y
+		if d := math.Hypot(toX, toY); d > 0 {
+			a.VX += (toX / d) * asteroidInboundDrift
+			a.VY += (toY / d) * asteroidInboundDrift
+		}
+		e.asteroids = append(e.asteroids, a)
+		return
+	}
 }
 
 func (e *Exploration) Update(d Director) error {
@@ -69,6 +146,9 @@ func (e *Exploration) Update(d Director) error {
 	}
 
 	e.player.Update()
+
+	// ゾーンに応じた小惑星のスポーン（フレームあたり最大 1 体）
+	e.trySpawnAsteroid()
 
 	// 小惑星の浮遊・自転
 	for _, a := range e.asteroids {
@@ -125,13 +205,17 @@ func (e *Exploration) Update(d Director) error {
 		}
 	}
 
-	// 空になった小惑星を除去
+	// 空・遠方の小惑星を除去（遠方は再生成に任せ、ミニマップ外で滞留させない）
 	na := 0
 	for _, a := range e.asteroids {
-		if !a.Empty() {
-			e.asteroids[na] = a
-			na++
+		if a.Empty() {
+			continue
 		}
+		if math.Hypot(a.X-e.player.X, a.Y-e.player.Y) > asteroidCullDist {
+			continue
+		}
+		e.asteroids[na] = a
+		na++
 	}
 	e.asteroids = e.asteroids[:na]
 

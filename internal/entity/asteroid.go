@@ -32,10 +32,10 @@ type Asteroid struct {
 	Grids      []AsteroidGrid
 }
 
-// NewAsteroid は (x, y) を中心とする size マス分の小惑星を生成する。
-// 形状はランダムウォーク的にグリッドを連結し、各グリッドの資源種別もランダム。
+// NewAsteroid は (x, y) を中心とする size マス分の小惑星を、単一素材で生成する。
+// 形状はランダムウォーク的にグリッドを連結する。
 // 浮遊速度・自転は乱数で軽く揺らす。
-func NewAsteroid(seed int64, x, y float64, size int) *Asteroid {
+func NewAsteroid(seed int64, x, y float64, size int, resource ResourceType) *Asteroid {
 	rng := rand.New(rand.NewSource(seed))
 	cells := map[[2]int]bool{{0, 0}: true}
 	dirs := [4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
@@ -56,13 +56,12 @@ func NewAsteroid(seed int64, x, y float64, size int) *Asteroid {
 		Angle:      rng.Float64() * 2 * math.Pi,
 		AngularVel: (rng.Float64()*2 - 1) * asteroidMaxAngularVel,
 	}
-	types := AllResourceTypes()
+	maxHP := resource.Info().MaxHP
 	for k := range cells {
-		r := types[rng.Intn(len(types))]
 		a.Grids = append(a.Grids, AsteroidGrid{
 			GX: k[0], GY: k[1],
-			Resource: r,
-			HP:       r.Info().MaxHP,
+			Resource: resource,
+			HP:       maxHP,
 		})
 	}
 	return a
