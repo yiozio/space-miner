@@ -14,4 +14,5 @@ const (
 	StateDialog
 	StateMenu
 	StateSettings
+	StateWorldMap
 )
