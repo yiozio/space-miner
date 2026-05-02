@@ -2,6 +2,7 @@ package scene
 
 import (
 	"fmt"
+	"image/color"
 	"math"
 	"math/rand"
 
@@ -309,6 +310,8 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 	miniW, miniH := float32(180), float32(180)
 	mx := float32(sw) - miniW - 20
 	my := float32(sh) - miniH - 20
+	// 不透明の黒背景で星空・小惑星を覆う
+	vector.DrawFilledRect(dst, mx, my, miniW, miniH, color.NRGBA{0, 0, 0, 255}, false)
 	vector.StrokeRect(dst, mx, my, miniW, miniH, 1, theme.Line, false)
 	ui.DrawText(dst, "MINIMAP", float64(mx)+10, float64(my)+8, 1.2, theme.LineDim)
 	// プレイヤー（中央点）
