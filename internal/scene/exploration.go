@@ -9,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/yiozio/space-miner/internal/dialog"
 	"github.com/yiozio/space-miner/internal/entity"
 	"github.com/yiozio/space-miner/internal/save"
 	"github.com/yiozio/space-miner/internal/ui"
@@ -108,7 +109,7 @@ func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 	// 各 FullMap の中心にステーションを配置（恒星マップ／ワープ先選択でも参照される）
 	for i := range e.world.Maps {
 		m := &e.world.Maps[i]
-		e.stations = append(e.stations, entity.NewStation(m.CX, m.CY))
+		e.stations = append(e.stations, entity.NewStation(m.Name, m.CX, m.CY))
 	}
 	// 開始時点でいる FullMap を記録（区画外なら nil）
 	e.lastMap = e.world.Containing(e.player.X, e.player.Y)
@@ -291,7 +292,21 @@ func (e *Exploration) Update(d Director) error {
 	// ドック中に Space 押下: 発射ではなくステーションメニューを開く
 	if e.activeDock != nil && inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		e.player.ThrustState = entity.ThrustOff
+		stationName := e.activeDock.Name
+		// 初回入船時は専用スクリプトを上に重ねる（閉じるとステーションメニューに戻る）
+		firstVisit := !e.player.VisitedStations[stationName]
+		if firstVisit {
+			if e.player.VisitedStations == nil {
+				e.player.VisitedStations = make(map[string]bool)
+			}
+			e.player.VisitedStations[stationName] = true
+		}
 		d.Push(NewStationMenu(e.player))
+		if firstVisit {
+			if script := dialog.ScriptForStation(stationName); script != nil {
+				d.Push(NewDialogScene(script))
+			}
+		}
 		return nil
 	}
 

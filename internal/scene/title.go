@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/yiozio/space-miner/internal/dialog"
 	"github.com/yiozio/space-miner/internal/save"
 	"github.com/yiozio/space-miner/internal/ui"
 )
@@ -62,6 +63,8 @@ func (t *Title) Update(d Director) error {
 		d.Replace(NewExplorationFromPlayer(res.Player, res.Playtime))
 	case titleItemNewGame:
 		d.Replace(NewExploration())
+		// オープニング: 探索シーンの上に Push、閉じるとゲーム本編へ
+		d.Push(NewOpeningScene(&dialog.Opening))
 	case titleItemLoad:
 		if !save.AnyExists() {
 			return nil
