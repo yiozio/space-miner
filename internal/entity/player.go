@@ -68,19 +68,35 @@ type thrusterAgg struct {
 
 func (p *Player) thrusterStats() thrusterAgg {
 	var t thrusterAgg
+	var cockpit *PartDef
 	for _, part := range p.Parts {
 		d := part.Def()
-		if d == nil || d.Kind != PartThruster {
+		if d == nil {
 			continue
 		}
-		t.count++
-		t.accel += d.ThrustAccel
-		t.maxSpeed += d.ThrustMaxSpeed
-		t.boostMaxSpeed += d.ThrustBoostMaxSpeed
-		t.boostFuelCost += d.ThrustBoostFuelCost
-		if d.ThrustBoostAccelMul > t.boostAccelMul {
-			t.boostAccelMul = d.ThrustBoostAccelMul
+		switch d.Kind {
+		case PartThruster:
+			t.count++
+			t.accel += d.ThrustAccel
+			t.maxSpeed += d.ThrustMaxSpeed
+			t.boostMaxSpeed += d.ThrustBoostMaxSpeed
+			t.boostFuelCost += d.ThrustBoostFuelCost
+			if d.ThrustBoostAccelMul > t.boostAccelMul {
+				t.boostAccelMul = d.ThrustBoostAccelMul
+			}
+		case PartCockpit:
+			cockpit = d
 		}
+	}
+	// Thruster が 1 つも無いときに限り、Cockpit の最低限スラスタ性能で代替する。
+	// Thruster が 1 つでもあれば Cockpit は推進寄与しない（二重計上を避ける）。
+	if t.count == 0 && cockpit != nil {
+		t.count = 1
+		t.accel = cockpit.ThrustAccel
+		t.maxSpeed = cockpit.ThrustMaxSpeed
+		t.boostMaxSpeed = cockpit.ThrustBoostMaxSpeed
+		t.boostFuelCost = cockpit.ThrustBoostFuelCost
+		t.boostAccelMul = cockpit.ThrustBoostAccelMul
 	}
 	return t
 }

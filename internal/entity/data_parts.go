@@ -31,10 +31,18 @@ const (
 )
 
 func init() {
+	// Cockpit はパイロット座席で配置必須。
+	// Thruster が 1 つも無いときの非常用推進として、最低限のスラスタ性能も持つ。
+	// 通常の Thruster が搭載されている場合、この値は使われない（player.go thrusterStats 参照）。
 	registerPartDef(&PartDef{
 		ID: PartIDCockpit, Kind: PartCockpit,
-		Name: "Cockpit", Desc: "Pilot seat. Required.",
-		Price: 0,
+		Name: "Cockpit", Desc: "Pilot seat. Required. Provides minimal thrust if no thrusters are installed.",
+		Price:               0,
+		ThrustAccel:         0.05,
+		ThrustMaxSpeed:      3.5,
+		ThrustBoostAccelMul: 1.4,
+		ThrustBoostMaxSpeed: 5.0,
+		ThrustBoostFuelCost: 0.10,
 	})
 
 	// --- Gun ---

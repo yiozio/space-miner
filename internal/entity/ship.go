@@ -104,8 +104,29 @@ func (s *Ship) DrawAt(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
 	dst.DrawImage(s.image, op)
 }
 
-// drawAfterburners は各 Thruster パーツの後端から後方に向けて炎を描画する。
-// 後方 = ワールド座標における前進方向の逆。
+// thrustEmitters は推進炎を出すべきパーツ群を返す。
+// 通常は全ての Thruster パーツ。Thruster が 1 つも無い場合は Cockpit を非常用エミッタとして返す
+// （Player.thrusterStats の Cockpit フォールバックと一致させる）。
+func (s *Ship) thrustEmitters() []Part {
+	var out []Part
+	for _, p := range s.Parts {
+		if p.Kind() == PartThruster {
+			out = append(out, p)
+		}
+	}
+	if len(out) > 0 {
+		return out
+	}
+	for _, p := range s.Parts {
+		if p.Kind() == PartCockpit {
+			return []Part{p}
+		}
+	}
+	return nil
+}
+
+// drawAfterburners は各推進エミッタ（Thruster、または非常時の Cockpit）の後端から
+// 後方に向けて炎を描画する。後方 = ワールド座標における前進方向の逆。
 func (s *Ship) drawAfterburners(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
 	sin, cos := math.Sin(s.Angle), math.Cos(s.Angle)
 	bx, by := -cos, -sin // 後方ベクトル
@@ -128,10 +149,7 @@ func (s *Ship) drawAfterburners(dst *ebiten.Image, sx, sy float64, theme *ui.The
 	}
 	line := theme.Line
 
-	for _, p := range s.Parts {
-		if p.Kind() != PartThruster {
-			continue
-		}
+	for _, p := range s.thrustEmitters() {
 		// パーツの後端中心（ローカル）。ローカル +y が後方。
 		lx := float64(p.GX) * g
 		rearLy := float64(p.GY)*g + g/2
