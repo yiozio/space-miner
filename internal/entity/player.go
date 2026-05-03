@@ -12,7 +12,6 @@ const (
 	PlayerHPDefault      = 100  // 基本 HP（Armor の ArmorHP 合算で MaxHP が増える）
 	// PlayerCreditsDefault = 100  // 初期所持クレジット
 	PlayerCreditsDefault = 1000
-	PlayerInvulnFrames   = 30 // 被弾後の無敵フレーム
 
 	// シールド回復: 最後の被弾から ShieldRegenDelay フレーム経過後に
 	// 毎フレーム ShieldRegenPerFrame ずつ回復する。
@@ -31,7 +30,6 @@ type Player struct {
 	MaxFuel         float64
 	MaxCargo        float64 // Cockpit + Cargo パーツの CargoCapacity 合算
 	Credits         int
-	InvulnTimer     int // 被弾後の残無敵フレーム（描画フラッシュにも使う）
 	fireTimer       int
 	Inventory       map[ResourceType]int // 資源
 	PartsInventory  map[PartID]int       // 船に未取付のスペアパーツ
@@ -259,10 +257,6 @@ func (p *Player) Update() {
 	if p.fireTimer > 0 {
 		p.fireTimer--
 	}
-	if p.InvulnTimer > 0 {
-		p.InvulnTimer--
-	}
-
 	// シールド回復: 最後の被弾から ShieldRegenDelay フレーム経過後、毎フレーム回復していく。
 	p.noDamageFrames++
 	if p.noDamageFrames >= ShieldRegenDelay && p.ShieldHP < p.MaxShieldHP {
@@ -279,10 +273,10 @@ func (p *Player) Update() {
 }
 
 // Damage はダメージを適用する。シールドが先に吸収し、超過分が HP を削る。
-// 無敵中、もしくは amount が非正なら何もしない。
+// amount が非正なら何もしない。
 // 被弾するとシールド回復タイマーがリセットされ、ShieldRegenDelay フレーム経過後に再生開始する。
 func (p *Player) Damage(amount int) {
-	if p.InvulnTimer > 0 || amount <= 0 {
+	if amount <= 0 {
 		return
 	}
 	p.noDamageFrames = 0
@@ -302,7 +296,6 @@ func (p *Player) Damage(amount int) {
 			p.HP = 0
 		}
 	}
-	p.InvulnTimer = PlayerInvulnFrames
 }
 
 // Shoot はクールダウンが許せば各 Gun パーツから1発ずつ弾を発射する。
