@@ -12,6 +12,8 @@ var shopStockIDs = []entity.PartID{
 	entity.PartIDGunMkI,
 	entity.PartIDGunMkII,
 	entity.PartIDGunRapid,
+	entity.PartIDGunPlasma,
+	entity.PartIDGunLaser,
 	entity.PartIDThrusterStd,
 	entity.PartIDThrusterLight,
 	entity.PartIDThrusterHeavy,

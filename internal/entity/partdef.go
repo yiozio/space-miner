@@ -17,6 +17,13 @@ type PartDef struct {
 	GunDamage      int
 	GunCooldown    int     // フレーム単位（60fps）
 	GunBulletSpeed float64 // px/frame
+	// 弾の見た目関連。
+	// GunBulletStyle: BulletStyleTrail（既定）/ Ball / Laser
+	// GunBulletWidth: ライン太さ or Ball 半径（0 ならスタイル既定値）
+	// GunBulletImpact: 命中時の着弾エフェクト（小さな円が広がる）有無
+	GunBulletStyle  BulletStyle
+	GunBulletWidth  float64
+	GunBulletImpact bool
 
 	// Thruster 用ステータス。Kind != PartThruster の def では未使用。
 	// 通常時は Accel と MaxSpeed を全スラスタで合算。

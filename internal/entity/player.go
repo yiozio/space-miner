@@ -352,21 +352,20 @@ func (p *Player) Damage(amount int) {
 	}
 }
 
-// Shoot はクールダウンが許せば各 Gun パーツから1発ずつ弾を発射する。
-// 弾は各 Gun の Rotation に従う向き（ローカル前方を回転したベクトル）で射出され、
-// 発射位置はそのパーツの「前端中心」となる。
+// Shoot はクールダウンが許せば各 Gun パーツから 1 発ずつ発射する。
+// 弾は各 Gun の Rotation に従う向きで射出され、発射位置はパーツの前端中心。
+// 戻り値: 通常弾 (Trail/Ball) と瞬間命中レーザー要求 (Laser スタイル) の 2 種に分かれる。
 // クールダウンは発射に参加したガンの中で最も長いものを採用する（最遅ガンが律速）。
-// 戻り値は今フレームに発射された弾。クールダウン中なら nil。
-func (p *Player) Shoot() []Bullet {
+// クールダウン中なら両方 nil。
+func (p *Player) Shoot() ([]Bullet, []LaserShot) {
 	if p.fireTimer > 0 {
-		return nil
+		return nil, nil
 	}
-	var out []Bullet
+	var bullets []Bullet
+	var lasers []LaserShot
 	sin, cos := math.Sin(p.Angle), math.Cos(p.Angle)
 	g := float64(GridSize)
 	halfG := g / 2
-	// ローカル → ワールド変換: 画像と同じ R(angle + π/2)
-	// (lx, ly) → (-sin*lx - cos*ly, cos*lx - sin*ly)
 	toWorld := func(lx, ly float64) (float64, float64) {
 		return -sin*lx - cos*ly, cos*lx - sin*ly
 	}
@@ -376,9 +375,6 @@ func (p *Player) Shoot() []Bullet {
 		if d == nil || d.Kind != PartGun {
 			continue
 		}
-		// パーツの前方単位ベクトル（パーツ局所）。デフォルト (R=0) は (0, -1)。
-		// Rotation R による 90° CW 回転後:
-		//   R=0:(0,-1) R=1:(-1,0) R=2:(0,1) R=3:(1,0)
 		var fxL, fyL float64
 		switch ((part.Rotation % 4) + 4) % 4 {
 		case 0:
@@ -390,30 +386,47 @@ func (p *Player) Shoot() []Bullet {
 		case 3:
 			fxL, fyL = 1, 0
 		}
-		// パーツ前端中心（ローカル）= パーツ中心 + 前方ベクトル × g/2
 		cxL := float64(part.GX) * g
 		cyL := float64(part.GY) * g
 		frontLx := cxL + fxL*halfG
 		frontLy := cyL + fyL*halfG
-		// 発射位置と弾の前方ベクトルをワールドへ変換
 		wox, woy := toWorld(frontLx, frontLy)
 		fwx, fwy := toWorld(fxL, fyL)
-		out = append(out, Bullet{
-			X:      p.X + wox,
-			Y:      p.Y + woy,
-			VX:     fwx*d.GunBulletSpeed + p.VX,
-			VY:     fwy*d.GunBulletSpeed + p.VY,
-			Life:   bulletLifeFrames,
-			Damage: d.GunDamage,
-		})
+		ox := p.X + wox
+		oy := p.Y + woy
+
+		if d.GunBulletStyle == BulletStyleLaser {
+			// レーザーは瞬間命中要求として返す（飛翔しない）
+			lasers = append(lasers, LaserShot{
+				X: ox, Y: oy,
+				DX: fwx, DY: fwy,
+				Damage:   d.GunDamage,
+				Range:    d.GunBulletSpeed * float64(bulletLifeFrames),
+				Hostile:  false,
+				Width:    d.GunBulletWidth,
+				ImpactFX: d.GunBulletImpact,
+			})
+		} else {
+			bullets = append(bullets, Bullet{
+				X:        ox,
+				Y:        oy,
+				VX:       fwx*d.GunBulletSpeed + p.VX,
+				VY:       fwy*d.GunBulletSpeed + p.VY,
+				Life:     bulletLifeFrames,
+				Damage:   d.GunDamage,
+				Style:    d.GunBulletStyle,
+				Width:    d.GunBulletWidth,
+				ImpactFX: d.GunBulletImpact,
+			})
+		}
 		if d.GunCooldown > maxCooldown {
 			maxCooldown = d.GunCooldown
 		}
 	}
-	if len(out) > 0 {
+	if len(bullets)+len(lasers) > 0 {
 		p.fireTimer = maxCooldown
 	}
-	return out
+	return bullets, lasers
 }
 
 // AddSparePart はスペアパーツインベントリに id を qty 個加算する。
