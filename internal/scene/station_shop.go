@@ -353,9 +353,21 @@ func (ss *StationShop) drawInfo(dst *ebiten.Image, theme *ui.Theme, x, y, _ floa
 func partStatLines(d *entity.PartDef) []string {
 	switch d.Kind {
 	case entity.PartGun:
+		style := "TRAIL"
+		switch d.GunBulletStyle {
+		case entity.BulletStyleBall:
+			style = "BALL"
+		case entity.BulletStyleLaser:
+			style = "LASER"
+		}
+		impact := ""
+		if d.GunBulletImpact {
+			impact = " + IMPACT FX"
+		}
 		return []string{
 			fmt.Sprintf("DMG %d   COOLDOWN %df", d.GunDamage, d.GunCooldown),
 			fmt.Sprintf("BULLET SPD %.1f", d.GunBulletSpeed),
+			fmt.Sprintf("STYLE %s%s", style, impact),
 		}
 	case entity.PartThruster:
 		return []string{

@@ -18,6 +18,8 @@ const (
 	PartIDGunMkI
 	PartIDGunMkII
 	PartIDGunRapid
+	PartIDGunPlasma
+	PartIDGunLaser
 
 	PartIDThrusterStd
 	PartIDThrusterLight
@@ -53,38 +55,76 @@ func init() {
 	registerPartDef(&PartDef{
 		ID: PartIDGunStarter, Kind: PartGun,
 		Name: "Starter Gun", Desc: "Factory-issue popgun. Low damage, slow rate.",
-		Price:          40,
-		GunDamage:      1,
-		GunCooldown:    20,
-		GunBulletSpeed: 9.0,
-		Weight:         2,
+		Price:           40,
+		GunDamage:       1,
+		GunCooldown:     20,
+		GunBulletSpeed:  9.0,
+		Weight:          2,
+		GunBulletStyle:  BulletStyleTrail,
+		GunBulletWidth:  1.5,
+		GunBulletImpact: false,
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDGunMkI, Kind: PartGun,
 		Name: "Gun Mk-I", Desc: "Standard forward gun.",
-		Price:          80,
-		GunDamage:      1,
-		GunCooldown:    12,
-		GunBulletSpeed: 12.0,
-		Weight:         3,
+		Price:           80,
+		GunDamage:       1,
+		GunCooldown:     12,
+		GunBulletSpeed:  12.0,
+		Weight:          3,
+		GunBulletStyle:  BulletStyleTrail,
+		GunBulletWidth:  2,
+		GunBulletImpact: false,
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDGunMkII, Kind: PartGun,
 		Name: "Gun Mk-II", Desc: "Heavy gun. High damage, slow rate.",
-		Price:          220,
-		GunDamage:      3,
-		GunCooldown:    24,
-		GunBulletSpeed: 10.0,
-		Weight:         5,
+		Price:           220,
+		GunDamage:       3,
+		GunCooldown:     24,
+		GunBulletSpeed:  10.0,
+		Weight:          5,
+		GunBulletStyle:  BulletStyleTrail,
+		GunBulletWidth:  3,
+		GunBulletImpact: true,
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDGunRapid, Kind: PartGun,
 		Name: "Rapid Gun", Desc: "Light gun. Fast rate, low damage.",
-		Price:          140,
-		GunDamage:      1,
-		GunCooldown:    6,
-		GunBulletSpeed: 14.0,
-		Weight:         2,
+		Price:           140,
+		GunDamage:       1,
+		GunCooldown:     6,
+		GunBulletSpeed:  14.0,
+		Weight:          2,
+		GunBulletStyle:  BulletStyleTrail,
+		GunBulletWidth:  1.2,
+		GunBulletImpact: false,
+	})
+	// Plasma Cannon: 大きなボール弾、低速・高威力、着弾エフェクトあり
+	registerPartDef(&PartDef{
+		ID: PartIDGunPlasma, Kind: PartGun,
+		Name: "Plasma Cannon", Desc: "Slow plasma orbs. High damage with impact burst.",
+		Price:           320,
+		GunDamage:       4,
+		GunCooldown:     30,
+		GunBulletSpeed:  8.0,
+		Weight:          6,
+		GunBulletStyle:  BulletStyleBall,
+		GunBulletWidth:  6,
+		GunBulletImpact: true,
+	})
+	// Laser Pulse: 細く長いビーム、高速、着弾エフェクトあり
+	registerPartDef(&PartDef{
+		ID: PartIDGunLaser, Kind: PartGun,
+		Name: "Laser Pulse", Desc: "Pinpoint laser pulses. Very fast, light damage.",
+		Price:           260,
+		GunDamage:       2,
+		GunCooldown:     14,
+		GunBulletSpeed:  22.0,
+		Weight:          3,
+		GunBulletStyle:  BulletStyleLaser,
+		GunBulletWidth:  1.5,
+		GunBulletImpact: true,
 	})
 
 	// --- Thruster ---

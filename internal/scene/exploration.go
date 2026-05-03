@@ -59,6 +59,11 @@ type Exploration struct {
 	pirates        []*entity.Pirate
 	pirateSpawnRng *rand.Rand
 
+	// 着弾エフェクト
+	impacts []entity.Impact
+	// 瞬間命中レーザーのビーム可視化（数フレーム描画）
+	beams []entity.Beam
+
 	// プレイ時間（秒）。ロード時は保存値から再開、新規ゲームは 0。
 	// 60fps 想定で毎フレーム 1/60 ずつ加算する。
 	playtime float64
@@ -311,11 +316,14 @@ func (e *Exploration) Update(d Director) error {
 		a.Update()
 	}
 
-	// 海賊 AI: 各機が旋回・追跡・発射し、敵弾を弾リストに合流させる
+	// 海賊 AI: 各機が旋回・追跡・発射し、敵弾とレーザー要求を処理する
 	for _, pr := range e.pirates {
-		bullets := pr.Update(e.player.X, e.player.Y)
+		bullets, lasers := pr.Update(e.player.X, e.player.Y)
 		if len(bullets) > 0 {
 			e.bullets = append(e.bullets, bullets...)
+		}
+		for _, l := range lasers {
+			e.fireLaser(l)
 		}
 	}
 
@@ -357,7 +365,40 @@ func (e *Exploration) Update(d Director) error {
 
 	// 発射（押しっぱなしでクールダウン許可分だけ発射）
 	if ebiten.IsKeyPressed(ebiten.KeySpace) {
-		e.bullets = append(e.bullets, e.player.Shoot()...)
+		bullets, lasers := e.player.Shoot()
+		if len(bullets) > 0 {
+			e.bullets = append(e.bullets, bullets...)
+		}
+		for _, l := range lasers {
+			e.fireLaser(l)
+		}
+	}
+
+	// 着弾エフェクトの更新（寿命切れを除去）
+	{
+		ni := 0
+		for i := range e.impacts {
+			eff := &e.impacts[i]
+			if eff.Update() {
+				continue
+			}
+			e.impacts[ni] = *eff
+			ni++
+		}
+		e.impacts = e.impacts[:ni]
+	}
+	// レーザービームの更新（寿命切れを除去）
+	{
+		nb := 0
+		for i := range e.beams {
+			beam := &e.beams[i]
+			if beam.Update() {
+				continue
+			}
+			e.beams[nb] = *beam
+			nb++
+		}
+		e.beams = e.beams[:nb]
 	}
 
 	// 弾の更新と寿命処理
@@ -383,12 +424,17 @@ func (e *Exploration) Update(d Director) error {
 			}
 			e.pickups = append(e.pickups, drops...)
 			hostile := b.Hostile
+			impact := b.ImpactFX
+			bx, by := b.X, b.Y
 			e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
 			// AutoAim 対象更新はプレイヤー弾の命中時のみ
 			if !hostile && e.autoAimTarget != a {
 				e.autoAimTarget = a
 				e.autoAimGridIdx = -1
 				e.autoAimDmgAcc = 0
+			}
+			if impact {
+				e.spawnImpact(bx, by, hostile)
 			}
 			break
 		}
@@ -686,6 +732,22 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		b.Draw(dst, b.X-e.cameraX+cx, b.Y-e.cameraY+cy, e.player.VX, e.player.VY, theme)
 	}
 
+	// レーザービーム（弾の上、着弾エフェクトの下）
+	for i := range e.beams {
+		bm := &e.beams[i]
+		x1 := bm.X1 - e.cameraX + cx
+		y1 := bm.Y1 - e.cameraY + cy
+		x2 := bm.X2 - e.cameraX + cx
+		y2 := bm.Y2 - e.cameraY + cy
+		bm.DrawScreen(dst, x1, y1, x2, y2)
+	}
+
+	// 着弾エフェクト
+	for i := range e.impacts {
+		eff := &e.impacts[i]
+		eff.Draw(dst, eff.X-e.cameraX+cx, eff.Y-e.cameraY+cy)
+	}
+
 	// AutoAim ビーム（パーツ → 対象グリッド）
 	beamColor := color.NRGBA{0xff, 0xc0, 0x40, 0xff}
 	for _, b := range e.autoAimBeams {
@@ -704,6 +766,8 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 	if e.player.ShieldHP > 0 {
 		e.player.Ship.DrawShieldOutline(dst, psx, psy, theme)
 	}
+	// HP / シールドバーを船体下に描画（パーツに被らない位置）
+	e.drawPlayerVitalBars(dst, theme, psx, psy)
 
 	// ドック近接プロンプト
 	if e.activeDock != nil {
@@ -723,12 +787,8 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 }
 
 func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
-	// ステータス（シールドは MaxShieldHP > 0 のときだけ表示）
-	statusLine := fmt.Sprintf("HP %d/%d", e.player.HP, e.player.MaxHP)
-	if e.player.MaxShieldHP > 0 {
-		statusLine += fmt.Sprintf("   SH %d/%d", e.player.ShieldHP, e.player.MaxShieldHP)
-	}
-	statusLine += fmt.Sprintf("   FUEL %d/%d   CARGO %.0f/%.0f   CR %d",
+	// ステータス: HP/シールドは自機下部のバーで表示するためここから除外。
+	statusLine := fmt.Sprintf("FUEL %d/%d   CARGO %.0f/%.0f   CR %d",
 		int(e.player.Fuel), int(e.player.MaxFuel),
 		e.player.CargoLoad(), e.player.MaxCargo,
 		e.player.Credits)
@@ -840,11 +900,13 @@ func (e *Exploration) tickWarp() {
 			e.player.VX = 0
 			e.player.VY = 0
 			e.lastMap = dest
-			// ワープ前の局所状態（小惑星・ピックアップ・弾・海賊・自動照準）は持ち越さない
+			// ワープ前の局所状態（小惑星・ピックアップ・弾・海賊・着弾・自動照準）は持ち越さない
 			e.asteroids = e.asteroids[:0]
 			e.pickups = e.pickups[:0]
 			e.bullets = e.bullets[:0]
 			e.pirates = e.pirates[:0]
+			e.impacts = e.impacts[:0]
+			e.beams = e.beams[:0]
 			e.autoAimTarget = nil
 			e.autoAimGridIdx = -1
 			e.autoAimDmgAcc = 0
@@ -935,7 +997,12 @@ func (e *Exploration) handlePlayerBulletsHitPirates() {
 				continue
 			}
 			pr.TakeHit(b.Damage)
+			impact := b.ImpactFX
+			bx, by := b.X, b.Y
 			e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
+			if impact {
+				e.spawnImpact(bx, by, false)
+			}
 			break
 		}
 	}
@@ -954,8 +1021,201 @@ func (e *Exploration) handleHostileBulletsHitPlayer() {
 			continue
 		}
 		e.player.Damage(b.Damage)
+		impact := b.ImpactFX
+		bx, by := b.X, b.Y
 		e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
+		if impact {
+			e.spawnImpact(bx, by, true)
+		}
 	}
+}
+
+// drawPlayerVitalBars は自機の下に HP バーと（あれば）シールドバーを描画する。
+// バーの位置は船体パーツのバウンディング半径（円相当）+ 余白で、
+// 機体の向きに依らずパーツと被らないようにする。
+func (e *Exploration) drawPlayerVitalBars(dst *ebiten.Image, theme *ui.Theme, psx, psy float64) {
+	// 船体半径: 各パーツのセル中心 + g/2 の最大距離
+	g := float64(entity.GridSize)
+	radius := g / 2
+	for _, part := range e.player.Parts {
+		dx := float64(part.GX) * g
+		dy := float64(part.GY) * g
+		d := math.Hypot(dx, dy) + g/2
+		if d > radius {
+			radius = d
+		}
+	}
+	const (
+		barW      = 80.0
+		barH      = 6.0
+		barGap    = 4.0
+		barMargin = 18.0
+	)
+	x0 := psx - barW/2
+	y0 := psy + radius + barMargin
+
+	// HP バー
+	drawVitalBar(dst, x0, y0, barW, barH,
+		float64(e.player.HP)/float64(maxIntOr1(e.player.MaxHP)),
+		color.NRGBA{0x60, 0xff, 0x80, 0xff}, theme.LineDim)
+
+	// シールドバー（MaxShieldHP > 0 のとき）
+	if e.player.MaxShieldHP > 0 {
+		drawVitalBar(dst, x0, y0+barH+barGap, barW, barH,
+			float64(e.player.ShieldHP)/float64(e.player.MaxShieldHP),
+			color.NRGBA{0x60, 0xc0, 0xff, 0xff}, theme.LineDim)
+	}
+}
+
+// drawVitalBar は HP/シールド共通のバー描画。fill は 0..1 のクランプ済み比率。
+func drawVitalBar(dst *ebiten.Image, x, y, w, h float64, fill float64, fillColor, frameColor color.NRGBA) {
+	if fill < 0 {
+		fill = 0
+	}
+	if fill > 1 {
+		fill = 1
+	}
+	// 背景（薄い塗り）
+	bg := frameColor
+	bg.A = 80
+	vector.DrawFilledRect(dst, float32(x), float32(y), float32(w), float32(h), bg, false)
+	// フィル
+	if fill > 0 {
+		vector.DrawFilledRect(dst, float32(x), float32(y), float32(w*fill), float32(h), fillColor, false)
+	}
+	// 枠
+	vector.StrokeRect(dst, float32(x), float32(y), float32(w), float32(h), 1, frameColor, false)
+}
+
+// maxIntOr1 は 0 を 1 に置換して 0 除算を防ぐ。
+func maxIntOr1(v int) int {
+	if v <= 0 {
+		return 1
+	}
+	return v
+}
+
+// spawnImpact は (x, y) に着弾エフェクトを追加する。hostile=true なら赤色、false ならテーマライン色相当。
+func (e *Exploration) spawnImpact(x, y float64, hostile bool) {
+	c := color.NRGBA{0xff, 0xc0, 0x40, 0xff}
+	if hostile {
+		c = color.NRGBA{0xff, 0x60, 0x40, 0xff}
+	}
+	e.impacts = append(e.impacts, entity.NewImpact(x, y, c))
+}
+
+// fireLaser は瞬間命中レーザーを処理する。
+// レイの最も近いヒット（小惑星グリッドまたは船体）にダメージを与え、
+// ビーム可視化を appended する。命中対象が無ければ Range の終端までビームを描く。
+func (e *Exploration) fireLaser(l entity.LaserShot) {
+	bestT := l.Range
+	hit := false
+	hitX, hitY := l.X+l.DX*l.Range, l.Y+l.DY*l.Range
+
+	// 小惑星グリッドへの命中（プレイヤー弾・敵弾の両方）
+	g := float64(entity.GridSize)
+	gridR := g / 2
+	type gridHit struct {
+		a   *entity.Asteroid
+		idx int
+	}
+	var asteroidHit *gridHit
+	for _, a := range e.asteroids {
+		aSin, aCos := math.Sin(a.Angle), math.Cos(a.Angle)
+		for i, gr := range a.Grids {
+			lgx := float64(gr.GX) * g
+			lgy := float64(gr.GY) * g
+			gcx := a.X + aCos*lgx - aSin*lgy
+			gcy := a.Y + aSin*lgx + aCos*lgy
+			if t, ok := raySphereHit(l.X, l.Y, l.DX, l.DY, gcx, gcy, gridR, bestT); ok {
+				bestT = t
+				hit = true
+				hitX = l.X + l.DX*t
+				hitY = l.Y + l.DY*t
+				asteroidHit = &gridHit{a: a, idx: i}
+			}
+		}
+	}
+
+	// 船体への命中
+	pirateIdx := -1
+	playerHit := false
+	if !l.Hostile {
+		// プレイヤーが撃ったレーザー → 海賊にダメージ
+		for i, pr := range e.pirates {
+			if pr.HP <= 0 {
+				continue
+			}
+			if t, ok := raySphereHit(l.X, l.Y, l.DX, l.DY, pr.X, pr.Y, pirateHitRadius, bestT); ok {
+				bestT = t
+				hit = true
+				hitX = l.X + l.DX*t
+				hitY = l.Y + l.DY*t
+				pirateIdx = i
+				asteroidHit = nil
+			}
+		}
+	} else {
+		// 敵レーザー → プレイヤーにダメージ
+		const playerHitRadius = float64(entity.GridSize)
+		if t, ok := raySphereHit(l.X, l.Y, l.DX, l.DY, e.player.X, e.player.Y, playerHitRadius, bestT); ok {
+			bestT = t
+			hit = true
+			hitX = l.X + l.DX*t
+			hitY = l.Y + l.DY*t
+			playerHit = true
+			asteroidHit = nil
+			pirateIdx = -1
+		}
+	}
+
+	// ダメージ適用
+	if asteroidHit != nil {
+		destroyed, pk, _ := asteroidHit.a.HitGrid(asteroidHit.idx, l.Damage)
+		if destroyed {
+			e.pickups = append(e.pickups, pk)
+		}
+	} else if pirateIdx >= 0 {
+		e.pirates[pirateIdx].TakeHit(l.Damage)
+		// プレイヤー弾命中時は AutoAim ターゲット更新は行わない（レーザーは別系統）
+	} else if playerHit {
+		e.player.Damage(l.Damage)
+	}
+
+	// ビーム可視化
+	beamColor := color.NRGBA{0xff, 0xc0, 0x40, 0xff}
+	if l.Hostile {
+		beamColor = color.NRGBA{0xff, 0x60, 0x40, 0xff}
+	}
+	e.beams = append(e.beams, entity.NewBeam(l.X, l.Y, hitX, hitY, l.Width, beamColor))
+
+	// 着弾エフェクト
+	if hit && l.ImpactFX {
+		e.spawnImpact(hitX, hitY, l.Hostile)
+	}
+}
+
+// raySphereHit はレイと円の交差判定。最初のヒット t を返す（0 ≤ t ≤ maxT）。
+// origin (ox, oy)、単位方向 (dx, dy)、円中心 (cx, cy) 半径 r。
+func raySphereHit(ox, oy, dx, dy, cx, cy, r, maxT float64) (float64, bool) {
+	fx := ox - cx
+	fy := oy - cy
+	b := fx*dx + fy*dy
+	c := fx*fx + fy*fy - r*r
+	disc := b*b - c
+	if disc < 0 {
+		return 0, false
+	}
+	sd := math.Sqrt(disc)
+	t1 := -b - sd
+	if t1 >= 0 && t1 <= maxT {
+		return t1, true
+	}
+	t2 := -b + sd
+	if t2 >= 0 && t2 <= maxT {
+		return t2, true
+	}
+	return 0, false
 }
 
 // cullPiratesAndDrop は撃破された海賊・カル距離超過の海賊を除去する。

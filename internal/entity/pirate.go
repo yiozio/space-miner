@@ -48,10 +48,10 @@ func NewPirate(x, y float64, playerX, playerY float64, pattern *PiratePattern) *
 	}
 }
 
-// Update は 1 フレーム分 AI を進め、発射した弾を返す。
+// Update は 1 フレーム分 AI を進め、発射した弾とレーザー要求を返す。
 // 動作: プレイヤー方向に旋回し、PreferredDist に近づこうとする。
 // FireRange 内で機首がほぼ向いているとき発射する。
-func (p *Pirate) Update(playerX, playerY float64) []Bullet {
+func (p *Pirate) Update(playerX, playerY float64) ([]Bullet, []LaserShot) {
 	dx := playerX - p.X
 	dy := playerY - p.Y
 	dist := math.Hypot(dx, dy)
@@ -98,14 +98,15 @@ func (p *Pirate) Update(playerX, playerY float64) []Bullet {
 	if dist < p.Pattern.FireRange && math.Abs(da) < 0.35 && p.fireTimer == 0 {
 		return p.shoot()
 	}
-	return nil
+	return nil, nil
 }
 
-// shoot は装着 Gun から敵弾（Hostile=true）を発射する。
+// shoot は装着 Gun から発射する。Hostile な弾とレーザー要求の 2 種を返す。
 // 弾は各 Gun の Rotation に従う方向に射出される（Player.Shoot と同じロジック）。
 // クールダウンは最も遅い Gun の値に揃える。
-func (p *Pirate) shoot() []Bullet {
-	var out []Bullet
+func (p *Pirate) shoot() ([]Bullet, []LaserShot) {
+	var bullets []Bullet
+	var lasers []LaserShot
 	sin, cos := math.Sin(p.Angle), math.Cos(p.Angle)
 	g := float64(GridSize)
 	halfG := g / 2
@@ -135,23 +136,41 @@ func (p *Pirate) shoot() []Bullet {
 		frontLy := cyL + fyL*halfG
 		wox, woy := toWorld(frontLx, frontLy)
 		fwx, fwy := toWorld(fxL, fyL)
-		out = append(out, Bullet{
-			X:       p.X + wox,
-			Y:       p.Y + woy,
-			VX:      fwx*d.GunBulletSpeed + p.VX,
-			VY:      fwy*d.GunBulletSpeed + p.VY,
-			Life:    bulletLifeFrames,
-			Damage:  d.GunDamage,
-			Hostile: true,
-		})
+		ox := p.X + wox
+		oy := p.Y + woy
+
+		if d.GunBulletStyle == BulletStyleLaser {
+			lasers = append(lasers, LaserShot{
+				X: ox, Y: oy,
+				DX: fwx, DY: fwy,
+				Damage:   d.GunDamage,
+				Range:    d.GunBulletSpeed * float64(bulletLifeFrames),
+				Hostile:  true,
+				Width:    d.GunBulletWidth,
+				ImpactFX: d.GunBulletImpact,
+			})
+		} else {
+			bullets = append(bullets, Bullet{
+				X:        ox,
+				Y:        oy,
+				VX:       fwx*d.GunBulletSpeed + p.VX,
+				VY:       fwy*d.GunBulletSpeed + p.VY,
+				Life:     bulletLifeFrames,
+				Damage:   d.GunDamage,
+				Hostile:  true,
+				Style:    d.GunBulletStyle,
+				Width:    d.GunBulletWidth,
+				ImpactFX: d.GunBulletImpact,
+			})
+		}
 		if d.GunCooldown > maxCD {
 			maxCD = d.GunCooldown
 		}
 	}
-	if len(out) > 0 {
+	if len(bullets)+len(lasers) > 0 {
 		p.fireTimer = maxCD
 	}
-	return out
+	return bullets, lasers
 }
 
 // TakeHit はダメージを適用し、true を返したら撃破。
