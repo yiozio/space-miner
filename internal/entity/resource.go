@@ -2,34 +2,27 @@ package entity
 
 import "image/color"
 
-// ResourceType は採掘可能な資源の種別。
-// 詳細は docs/GAME_DESIGN.md「採掘システム / 小惑星の構造」を参照。
-type ResourceType int
-
-const (
-	ResourceIron ResourceType = iota
-	ResourceCrystal
-	ResourceIce
-	resourceCount
-)
+// resource.go は資源種別の型・参照 API を置く。
+// 個別の資源データ（名前・色・HP・価格）は data_resources.go を参照。
 
 // ResourceInfo は資源種別ごとの視覚＆HP情報。
-// Color はグリッド表示色（種別判別用）、MaxHP はグリッド毎の最大HP。
 type ResourceInfo struct {
 	Name  string
 	Color color.NRGBA
 	MaxHP int
 }
 
-var resourceInfos = [resourceCount]ResourceInfo{
-	ResourceIron:    {Name: "IRON", Color: color.NRGBA{0xc8, 0xc8, 0xc8, 0xff}, MaxHP: 3},
-	ResourceCrystal: {Name: "CRYSTAL", Color: color.NRGBA{0x80, 0x80, 0xff, 0xff}, MaxHP: 8},
-	ResourceIce:     {Name: "ICE", Color: color.NRGBA{0x80, 0xe0, 0xff, 0xff}, MaxHP: 2},
-}
-
 // Info は ResourceType の表示・HP情報を返す。
 func (r ResourceType) Info() ResourceInfo {
 	return resourceInfos[r]
+}
+
+// Price は資源 1 単位あたりの売買単価を返す。
+func (r ResourceType) Price() int {
+	if r < 0 || int(r) >= len(resourcePrices) {
+		return 0
+	}
+	return resourcePrices[r]
 }
 
 // AllResourceTypes は全資源種別を順に返す（HUD 表示や生成で使用）。
