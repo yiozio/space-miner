@@ -341,13 +341,15 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 }
 
 func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
-	// ステータス
-	ui.DrawText(dst,
-		fmt.Sprintf("HP %d/%d   FUEL %d/%d   CR %d",
-			e.player.HP, e.player.MaxHP,
-			int(e.player.Fuel), int(e.player.MaxFuel),
-			e.player.Credits),
-		20, 20, 1.5, theme.Line)
+	// ステータス（シールドは MaxShieldHP > 0 のときだけ表示）
+	statusLine := fmt.Sprintf("HP %d/%d", e.player.HP, e.player.MaxHP)
+	if e.player.MaxShieldHP > 0 {
+		statusLine += fmt.Sprintf("   SH %d/%d", e.player.ShieldHP, e.player.MaxShieldHP)
+	}
+	statusLine += fmt.Sprintf("   FUEL %d/%d   CR %d",
+		int(e.player.Fuel), int(e.player.MaxFuel),
+		e.player.Credits)
+	ui.DrawText(dst, statusLine, 20, 20, 1.5, theme.Line)
 
 	// インベントリ
 	inv := e.player.Inventory

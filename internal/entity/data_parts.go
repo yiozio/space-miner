@@ -121,8 +121,18 @@ func init() {
 		FuelCapacity: 100,
 	})
 	registerPartDef(&PartDef{ID: PartIDCargoStd, Kind: PartCargo, Name: "Cargo", Desc: "Resource storage.", Price: 60})
-	registerPartDef(&PartDef{ID: PartIDArmorStd, Kind: PartArmor, Name: "Armor", Desc: "Hardened plating.", Price: 100})
-	registerPartDef(&PartDef{ID: PartIDShieldStd, Kind: PartShield, Name: "Shield", Desc: "Shield generator.", Price: 150})
+	registerPartDef(&PartDef{
+		ID: PartIDArmorStd, Kind: PartArmor,
+		Name: "Armor", Desc: "Hardened plating. Increases max HP.",
+		Price:   100,
+		ArmorHP: 25,
+	})
+	registerPartDef(&PartDef{
+		ID: PartIDShieldStd, Kind: PartShield,
+		Name: "Shield", Desc: "Shield generator. Absorbs damage; regenerates after 2s without damage.",
+		Price:    150,
+		ShieldHP: 50,
+	})
 	registerPartDef(&PartDef{ID: PartIDAutoAimStd, Kind: PartAutoAim, Name: "Auto-Aim", Desc: "Auto-targets nearby asteroids.", Price: 250})
 	registerPartDef(&PartDef{ID: PartIDWarpStd, Kind: PartWarp, Name: "Warp", Desc: "Warp drive.", Price: 400})
 }
