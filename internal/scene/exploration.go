@@ -346,7 +346,7 @@ func (e *Exploration) Update(d Director) error {
 			}
 			e.player.VisitedStations[stationName] = true
 		}
-		d.Push(NewStationMenu(e.player))
+		d.Push(NewStationMenu(e.player, e.world, stationName))
 		if firstVisit {
 			if script := dialog.ScriptForStation(stationName); script != nil {
 				d.Push(NewDialogScene(script))
@@ -960,11 +960,18 @@ func (e *Exploration) handleHostileBulletsHitPlayer() {
 
 // cullPiratesAndDrop は撃破された海賊・カル距離超過の海賊を除去する。
 // 撃破時は credits を加算し、PartDropRate に従って稀にパーツ pickup を生成する。
+// 加えて Bounty クエストの進捗用に PiratesKilledByMap を更新する（撃破した海賊が居た FullMap）。
 func (e *Exploration) cullPiratesAndDrop() {
 	n := 0
 	for _, pr := range e.pirates {
 		if pr.HP <= 0 {
 			e.dropPirateLoot(pr)
+			if pm := e.world.Containing(pr.X, pr.Y); pm != nil {
+				if e.player.PiratesKilledByMap == nil {
+					e.player.PiratesKilledByMap = make(map[string]int)
+				}
+				e.player.PiratesKilledByMap[pm.Name]++
+			}
 			continue
 		}
 		if math.Hypot(pr.X-e.player.X, pr.Y-e.player.Y) > asteroidCullDist {
