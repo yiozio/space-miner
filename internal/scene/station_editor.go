@@ -135,7 +135,7 @@ func (se *StationEditor) tryPlace() {
 		GY:    se.cursorGY,
 	})
 	se.player.PartsInventory[def.ID]--
-	se.player.Ship.InvalidateImage()
+	se.player.OnPartsChanged()
 }
 
 // tryRemove はカーソル位置のパーツを取り外し、PartsInventory に戻す。
@@ -151,7 +151,7 @@ func (se *StationEditor) tryRemove() {
 	}
 	se.player.Parts = append(se.player.Parts[:i], se.player.Parts[i+1:]...)
 	se.player.PartsInventory[p.DefID]++
-	se.player.Ship.InvalidateImage()
+	se.player.OnPartsChanged()
 }
 
 func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
