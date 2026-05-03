@@ -344,6 +344,18 @@ func (p *Player) Shoot() []Bullet {
 	return out
 }
 
+// HasWarpDrive は搭載パーツに Warp パーツが含まれているかを返す。
+// 未搭載なら恒星マップは表示のみ、ワープ確定は不可となる。
+func (p *Player) HasWarpDrive() bool {
+	for _, part := range p.Parts {
+		d := part.Def()
+		if d != nil && d.Kind == PartWarp {
+			return true
+		}
+	}
+	return false
+}
+
 // AddResource はインベントリに資源を加算する。
 // 積載超過になる場合は false を返し、加算しない（呼び出し側で拾い直し等を判断する）。
 // qty が非正の場合は減算となるため重量チェックを行わない。

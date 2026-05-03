@@ -248,11 +248,12 @@ func (e *Exploration) Update(d Director) error {
 		return nil
 	}
 
-	// 恒星マップ → ワープ
+	// 恒星マップ → ワープ（Warp パーツ未搭載でも閲覧は可。確定は搭載時のみ）
 	if inpututil.IsKeyJustPressed(ebiten.KeyN) {
 		e.player.ThrustState = entity.ThrustOff
+		canWarp := e.player.HasWarpDrive()
 		current := e.CurrentMapName()
-		d.Push(NewStarMap(e.world, current, func(d Director, dest *entity.FullMap) bool {
+		d.Push(NewStarMap(e.world, current, canWarp, func(d Director, dest *entity.FullMap) bool {
 			e.startWarp(dest)
 			return true
 		}))
