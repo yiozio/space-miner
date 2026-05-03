@@ -22,18 +22,20 @@ const (
 // Player はプレイヤー機。Ship に操作・発射・インベントリ・HP・燃料・クレジットを加えたもの。
 type Player struct {
 	Ship
-	HP              int
-	MaxHP           int // 基本 HP + 全 Armor の ArmorHP 合算
-	ShieldHP        int // 現在のシールド HP
-	MaxShieldHP     int // 全 Shield パーツの ShieldHP 合算
-	Fuel            float64
-	MaxFuel         float64
-	MaxCargo        float64 // Cockpit + Cargo パーツの CargoCapacity 合算
-	Credits         int
-	fireTimer       int
-	Inventory       map[ResourceType]int // 資源
-	PartsInventory  map[PartID]int       // 船に未取付のスペアパーツ
-	VisitedStations map[string]bool      // 初回入船ダイアログの再生済みステーション名（FullMap 名）
+	HP                 int
+	MaxHP              int // 基本 HP + 全 Armor の ArmorHP 合算
+	ShieldHP           int // 現在のシールド HP
+	MaxShieldHP        int // 全 Shield パーツの ShieldHP 合算
+	Fuel               float64
+	MaxFuel            float64
+	MaxCargo           float64 // Cockpit + Cargo パーツの CargoCapacity 合算
+	Credits            int
+	fireTimer          int
+	Inventory          map[ResourceType]int    // 資源
+	PartsInventory     map[PartID]int          // 船に未取付のスペアパーツ
+	VisitedStations    map[string]bool         // 初回入船ダイアログの再生済みステーション名（FullMap 名）
+	Tavern             map[string]*TavernBoard // 各ステーションの酒場掲示板（3 スロット）
+	PiratesKilledByMap map[string]int          // 各 FullMap での累計海賊撃破数（Bounty 進捗の根拠）
 	// 動的なスピード上限。ブースト時に boost 上限へ瞬時上昇し、解除後は徐々に通常上限へ減衰する。
 	speedCap float64
 	// シールド回復制御。
@@ -57,12 +59,14 @@ func NewPlayerPebble() *Player {
 			Y:     DefaultStationY,
 			Angle: -math.Pi / 2, // 起動時はビジュアル的に上向き
 		},
-		HP:              PlayerHPDefault,
-		MaxHP:           PlayerHPDefault,
-		Credits:         PlayerCreditsDefault,
-		Inventory:       make(map[ResourceType]int),
-		PartsInventory:  make(map[PartID]int),
-		VisitedStations: make(map[string]bool),
+		HP:                 PlayerHPDefault,
+		MaxHP:              PlayerHPDefault,
+		Credits:            PlayerCreditsDefault,
+		Inventory:          make(map[ResourceType]int),
+		PartsInventory:     make(map[PartID]int),
+		VisitedStations:    make(map[string]bool),
+		Tavern:             make(map[string]*TavernBoard),
+		PiratesKilledByMap: make(map[string]int),
 	}
 	p.recomputeStats()
 	// 初期状態は HP/シールドを満タンに

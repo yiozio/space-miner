@@ -42,17 +42,39 @@ type Meta struct {
 // PlayerState は Player の永続化対象フィールド。
 // 派生ステータス（MaxHP / MaxFuel / MaxCargo 等）はパーツから再計算するため保存しない。
 type PlayerState struct {
-	Parts           []PartState     `json:"parts"`
-	X               float64         `json:"x"`
-	Y               float64         `json:"y"`
-	Angle           float64         `json:"angle"`
-	HP              int             `json:"hp"`
-	ShieldHP        int             `json:"shield_hp"`
-	Fuel            float64         `json:"fuel"`
-	Credits         int             `json:"credits"`
-	Inventory       map[int]int     `json:"inventory"`        // ResourceType -> qty
-	PartsInventory  map[int]int     `json:"parts_inventory"`  // PartID -> qty
-	VisitedStations map[string]bool `json:"visited_stations"` // 初回ダイアログ済みステーション名
+	Parts              []PartState            `json:"parts"`
+	X                  float64                `json:"x"`
+	Y                  float64                `json:"y"`
+	Angle              float64                `json:"angle"`
+	HP                 int                    `json:"hp"`
+	ShieldHP           int                    `json:"shield_hp"`
+	Fuel               float64                `json:"fuel"`
+	Credits            int                    `json:"credits"`
+	Inventory          map[int]int            `json:"inventory"`             // ResourceType -> qty
+	PartsInventory     map[int]int            `json:"parts_inventory"`       // PartID -> qty
+	VisitedStations    map[string]bool        `json:"visited_stations"`      // 初回ダイアログ済みステーション名
+	Tavern             map[string]*BoardState `json:"tavern"`                // ステーションごとの酒場掲示板
+	PiratesKilledByMap map[string]int         `json:"pirates_killed_by_map"` // FullMap 名 → 累計撃破数
+}
+
+// BoardState は TavernBoard の永続化形式。
+type BoardState struct {
+	Slots [3]QuestState `json:"slots"`
+}
+
+// QuestState は Quest の永続化形式。enum 系は int で保存する。
+type QuestState struct {
+	ID             string `json:"id"`
+	Kind           int    `json:"kind"`
+	Resource       int    `json:"resource"`
+	Amount         int    `json:"amount"`
+	MapName        string `json:"map_name"`
+	PirateTarget   int    `json:"pirate_target"`
+	PirateBaseline int    `json:"pirate_baseline"`
+	RewardCredits  int    `json:"reward_credits"`
+	RewardPart     int    `json:"reward_part"`
+	HasPartReward  bool   `json:"has_part_reward"`
+	DiscardCost    int    `json:"discard_cost"`
 }
 
 // PartState は配置済みパーツ 1 つの保存形式。
@@ -233,18 +255,49 @@ func makePlayerState(player *entity.Player) PlayerState {
 			visited[k] = true
 		}
 	}
+	tavern := make(map[string]*BoardState, len(player.Tavern))
+	for stn, board := range player.Tavern {
+		if board == nil {
+			continue
+		}
+		bs := &BoardState{}
+		for i, q := range board.Slots {
+			bs.Slots[i] = QuestState{
+				ID:             q.ID,
+				Kind:           int(q.Kind),
+				Resource:       int(q.Resource),
+				Amount:         q.Amount,
+				MapName:        q.MapName,
+				PirateTarget:   q.PirateTarget,
+				PirateBaseline: q.PirateBaseline,
+				RewardCredits:  q.RewardCredits,
+				RewardPart:     int(q.RewardPart),
+				HasPartReward:  q.HasPartReward,
+				DiscardCost:    q.DiscardCost,
+			}
+		}
+		tavern[stn] = bs
+	}
+	kills := make(map[string]int, len(player.PiratesKilledByMap))
+	for k, v := range player.PiratesKilledByMap {
+		if v > 0 {
+			kills[k] = v
+		}
+	}
 	return PlayerState{
-		Parts:           parts,
-		X:               player.X,
-		Y:               player.Y,
-		Angle:           player.Angle,
-		HP:              player.HP,
-		ShieldHP:        player.ShieldHP,
-		Fuel:            player.Fuel,
-		Credits:         player.Credits,
-		Inventory:       inv,
-		PartsInventory:  pinv,
-		VisitedStations: visited,
+		Parts:              parts,
+		X:                  player.X,
+		Y:                  player.Y,
+		Angle:              player.Angle,
+		HP:                 player.HP,
+		ShieldHP:           player.ShieldHP,
+		Fuel:               player.Fuel,
+		Credits:            player.Credits,
+		Inventory:          inv,
+		PartsInventory:     pinv,
+		VisitedStations:    visited,
+		Tavern:             tavern,
+		PiratesKilledByMap: kills,
 	}
 }
 
@@ -271,6 +324,35 @@ func restorePlayer(ps PlayerState) *entity.Player {
 			visited[k] = true
 		}
 	}
+	tavern := make(map[string]*entity.TavernBoard, len(ps.Tavern))
+	for stn, bs := range ps.Tavern {
+		if bs == nil {
+			continue
+		}
+		tb := &entity.TavernBoard{}
+		for i, qs := range bs.Slots {
+			tb.Slots[i] = entity.Quest{
+				ID:             qs.ID,
+				Kind:           entity.QuestKind(qs.Kind),
+				Resource:       entity.ResourceType(qs.Resource),
+				Amount:         qs.Amount,
+				MapName:        qs.MapName,
+				PirateTarget:   qs.PirateTarget,
+				PirateBaseline: qs.PirateBaseline,
+				RewardCredits:  qs.RewardCredits,
+				RewardPart:     entity.PartID(qs.RewardPart),
+				HasPartReward:  qs.HasPartReward,
+				DiscardCost:    qs.DiscardCost,
+			}
+		}
+		tavern[stn] = tb
+	}
+	kills := make(map[string]int, len(ps.PiratesKilledByMap))
+	for k, v := range ps.PiratesKilledByMap {
+		if v > 0 {
+			kills[k] = v
+		}
+	}
 	p := &entity.Player{
 		Ship: entity.Ship{
 			Parts: parts,
@@ -278,10 +360,12 @@ func restorePlayer(ps PlayerState) *entity.Player {
 			Y:     ps.Y,
 			Angle: ps.Angle,
 		},
-		Credits:         ps.Credits,
-		Inventory:       inv,
-		PartsInventory:  pinv,
-		VisitedStations: visited,
+		Credits:            ps.Credits,
+		Inventory:          inv,
+		PartsInventory:     pinv,
+		VisitedStations:    visited,
+		Tavern:             tavern,
+		PiratesKilledByMap: kills,
 	}
 	p.OnPartsChanged()
 	p.HP = clampInt(ps.HP, 0, p.MaxHP)

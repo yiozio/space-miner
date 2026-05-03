@@ -15,25 +15,32 @@ import (
 const (
 	stationItemRepair = iota
 	stationItemRefuel
+	stationItemTavern
 	stationItemShop
 	stationItemEdit
 )
 
 // StationMenu はステーションのハブ画面。
-// 探索シーンの上にオーバーレイ表示し、Repair / Refuel / Shop / Editor の入口を提供する。
+// 探索シーンの上にオーバーレイ表示し、Repair / Refuel / Tavern / Shop / Editor の入口を提供する。
 type StationMenu struct {
-	player *entity.Player
-	menu   *ui.Menu
+	player      *entity.Player
+	world       *entity.World
+	stationName string
+	menu        *ui.Menu
 }
 
 // NewStationMenu はメニューを生成する。
-func NewStationMenu(p *entity.Player) *StationMenu {
+// world / stationName は Tavern などサブシーンに渡すための補助情報。
+func NewStationMenu(p *entity.Player, world *entity.World, stationName string) *StationMenu {
 	return &StationMenu{
-		player: p,
+		player:      p,
+		world:       world,
+		stationName: stationName,
 		menu: &ui.Menu{
 			Items: []*ui.MenuItem{
 				{Label: "Repair", Enabled: true},
 				{Label: "Refuel", Enabled: true},
+				{Label: "Tavern", Enabled: true},
 				{Label: "Parts Shop", Enabled: true},
 				{Label: "Ship Editor", Enabled: true},
 			},
@@ -60,6 +67,8 @@ func (sm *StationMenu) Update(d Director) error {
 		if sm.player.Fuel < sm.player.MaxFuel {
 			sm.player.Fuel = sm.player.MaxFuel
 		}
+	case stationItemTavern:
+		d.Push(NewStationTavern(sm.player, sm.world, sm.stationName))
 	case stationItemShop:
 		d.Push(NewStationShop(sm.player))
 	case stationItemEdit:
