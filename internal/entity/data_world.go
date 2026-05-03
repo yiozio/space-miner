@@ -55,7 +55,7 @@ func DefaultWorld() *World {
 					// 起点ステーションの上に大きく青い惑星を背景表示
 					BackdropRadius:  320,
 					BackdropOffsetX: 0,
-					BackdropOffsetY: -900,
+					BackdropOffsetY: -450,
 				},
 				Zones: []ResourceZone{
 					// 起点近くの鉄ゾーン x2
@@ -101,8 +101,8 @@ func DefaultWorld() *World {
 					ParentName: "Aurora",
 					// 衛星らしくやや小さめ
 					BackdropRadius:  180,
-					BackdropOffsetX: 400,
-					BackdropOffsetY: -700,
+					BackdropOffsetX: 200,
+					BackdropOffsetY: -350,
 				},
 				Zones: []ResourceZone{
 					// 氷リッチな衛星
@@ -132,8 +132,8 @@ func DefaultWorld() *World {
 					Radius: 34,
 					// 大型ガス惑星風の大きな背景
 					BackdropRadius:  420,
-					BackdropOffsetX: -600,
-					BackdropOffsetY: -1100,
+					BackdropOffsetX: -300,
+					BackdropOffsetY: -650,
 				},
 				Zones: []ResourceZone{
 					// 青銅リッチな惑星

@@ -721,18 +721,19 @@ func (e *Exploration) drawWarpOverlay(dst *ebiten.Image, theme *ui.Theme, sw, sh
 	vector.DrawFilledRect(dst, 0, 0, float32(sw), float32(sh), color.NRGBA{255, 255, 255, alpha}, false)
 }
 
-// drawCelestialBackdrop は天体を (mapCX, mapCY) + Backdrop オフセットの位置に
-// 円として描画する。BackdropRadius が 0 の場合は何もしない。
-// 描画は半透明の塗り + 縁線で「背景にある巨大な球体」感を出す。
+// drawCelestialBackdrop は天体を FullMap 中心 (mapCX, mapCY) を anchor として描画する。
+// BackdropRadius が 0 の場合は何もしない。
+// 設計どおりの位置に見え、自機が動いても少しだけしか流れないようにする。
 func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
 	mapCX, mapCY, cameraX, cameraY, screenCX, screenCY float64) {
 	if body == nil || body.BackdropRadius <= 0 {
 		return
 	}
-	wx := mapCX + body.BackdropOffsetX
-	wy := mapCY + body.BackdropOffsetY
-	sx := float32(wx - cameraX + screenCX)
-	sy := float32(wy - cameraY + screenCY)
+	// anchor = FullMap 中心。anchor 上では設計オフセットそのまま見える。
+	// 自機が動いた分だけ (anchor - camera) * P を加える（P が小さいほど動かない）。
+	const p = nearPlanetParallax
+	sx := float32(body.BackdropOffsetX + (mapCX-cameraX)*p + screenCX)
+	sy := float32(body.BackdropOffsetY + (mapCY-cameraY)*p + screenCY)
 	r := float32(body.BackdropRadius)
 	// 視界外なら早期スキップ（半径分のマージン込み）
 	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
