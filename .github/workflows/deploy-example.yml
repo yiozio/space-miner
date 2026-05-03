@@ -1,0 +1,29 @@
+name: deploy-example
+on:
+  push:
+    tags: ["deploy-example"]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+      - uses: actions/checkout@v6
+      - run: go mod tidy
+      - run: env GOOS=js GOARCH=wasm go build -o ./_site/example.wasm ./cmd/game
+      - uses: actions/upload-pages-artifact@v4
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
