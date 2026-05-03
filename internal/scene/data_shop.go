@@ -20,6 +20,7 @@ var shopStockIDs = []entity.PartID{
 	entity.PartIDAutoAimStd,
 	entity.PartIDFuelStd,
 	entity.PartIDShieldStd,
+	entity.PartIDWarpStd,
 }
 
 // shopInitialQuantity は def の Kind に応じた初期入荷数。

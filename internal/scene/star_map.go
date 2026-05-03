@@ -14,22 +14,28 @@ import (
 // StarMap は恒星系全体を俯瞰し、ワープ先の宇宙ステーションを選ぶシーン。
 // 恒星は常に世界座標 (0, 0) と扱い、各 FullMap は CX/CY で配置する。
 // 衛星は親惑星から線で結び、現在地と選択先をハイライトする。
+//
+// canWarp が false（Warp パーツ未搭載）の場合、表示はそのまま行うが
+// Enter による確定は無効化され、画面下に未搭載である旨を表示する。
 type StarMap struct {
 	world      *entity.World
 	currentMap string                                      // プレイヤーの現在 FullMap 名（ハイライト用）
 	targets    []*entity.FullMap                           // ワープ可能なステーション（FullMap ごと）
 	cursor     int                                         // targets のインデックス
+	canWarp    bool                                        // Warp パーツ搭載時のみ確定可
 	onWarp     func(d Director, dest *entity.FullMap) bool // 確定時コールバック。true で Pop する
 }
 
 // NewStarMap は恒星マップシーンを生成する。
 //   - world:        対象となる恒星系
 //   - currentMap:   プレイヤーが現在いる FullMap 名（区画外なら空文字）
+//   - canWarp:      Warp パーツ搭載状態。false ならワープ確定は無効
 //   - onWarp:       目的地確定時に呼ばれる。返り値 true で StarMap を閉じる
-func NewStarMap(world *entity.World, currentMap string, onWarp func(d Director, dest *entity.FullMap) bool) *StarMap {
+func NewStarMap(world *entity.World, currentMap string, canWarp bool, onWarp func(d Director, dest *entity.FullMap) bool) *StarMap {
 	s := &StarMap{
 		world:      world,
 		currentMap: currentMap,
+		canWarp:    canWarp,
 		onWarp:     onWarp,
 	}
 	for i := range world.Maps {
@@ -69,6 +75,9 @@ func (s *StarMap) Update(d Director) error {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) ||
 		inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		if !s.canWarp {
+			return nil // Warp パーツ未搭載: 確定は無視
+		}
 		dest := s.targets[s.cursor]
 		if dest.Name == s.currentMap {
 			return nil // 同地ワープは無効
@@ -211,13 +220,22 @@ func (s *StarMap) Draw(dst *ebiten.Image, d Director) {
 	// 下部の詳細パネル: 選択中ターゲットの情報
 	dest := s.targets[s.cursor]
 	infoY := areaBot + 16
+	labelColor := theme.Line
+	if !s.canWarp {
+		labelColor = theme.LineDim
+	}
 	label := fmt.Sprintf("> %s  (%s)", dest.Name, kindLabel(dest.Body.Kind))
 	if dest.Name == s.currentMap {
 		label += "   [ CURRENT LOCATION ]"
 	}
-	ui.DrawText(dst, label, margin, infoY, 1.6, theme.Line)
+	ui.DrawText(dst, label, margin, infoY, 1.6, labelColor)
 	zonesNote := fmt.Sprintf("ZONES %d", len(dest.Zones))
 	ui.DrawText(dst, zonesNote, margin, infoY+30, 1.2, theme.LineDim)
+	if !s.canWarp {
+		warning := "WARP DRIVE NOT INSTALLED"
+		ww, _ := ui.MeasureText(warning, 1.4)
+		ui.DrawText(dst, warning, float64(sw)-margin-ww, infoY, 1.4, theme.Line)
+	}
 }
 
 // drawStarMapBody は天体を恒星マップ上に描画する。
