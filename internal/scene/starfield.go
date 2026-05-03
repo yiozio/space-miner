@@ -43,15 +43,22 @@ func newStarLayer(rng *rand.Rand, count int, tileSize, parallax, minBright, maxB
 	return l
 }
 
+// 共有パララックス係数。
+// 惑星バックドロップ（exploration.go の drawCelestialBackdrop）も同じ値を使う。
+const (
+	farStarParallax  = 0.0  // 最も遠い星: 動かない
+	nearStarParallax = 0.10 // 近景星 + 惑星バックドロップ
+	nearPlanetParallax = 0.35 // 現在居るマップの惑星/衛星
+)
+
 // newStarfield は遠景・近景の2レイヤー構成で生成する。
-// どちらも自機よりかなり遠くにある想定で、視差係数を抑えてゆっくり流れるようにする。
-// 視覚的には遠景が多く、近景は控えめにして奥行きを強調する。
+// 遠景は完全静止、近景はゆっくり流れる。惑星バックドロップは近景と同じパララックス。
 func newStarfield(seed int64) *starfield {
 	rng := rand.New(rand.NewSource(seed))
 	return &starfield{
 		layers: []starLayer{
-			newStarLayer(rng, 420, 1500, 0.10, 0.18, 0.5), // 遠景（多数・暗い・ほぼ静止）
-			newStarLayer(rng, 70, 1000, 0.35, 0.5, 1.0),   // 近景（少数・明るい・流れる）
+			newStarLayer(rng, 420, 1500, farStarParallax, 0.18, 0.5), // 遠景（多数・暗い・静止）
+			newStarLayer(rng, 70, 1000, nearStarParallax, 0.5, 1.0),  // 近景（少数・明るい・微妙に流れる）
 		},
 	}
 }
