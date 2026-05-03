@@ -27,9 +27,15 @@ const (
 // (GX, GY) はコックピットを原点 (0, 0) としたローカル座標。
 // +y はビジュアル上の後方（ローカル -y が機体の進行方向）。
 // DefID は性能・名前・価格などのバリアント情報の参照。
+// Rotation はパーツの向き（0..3、90° 単位の時計回り回転）。
+//   - 0: デフォルト（後方に推進など）
+//   - 1: 90° 時計回り
+//   - 2: 180°（後ろ向きスラスタ等）
+//   - 3: 270°
 type Part struct {
-	DefID  PartID
-	GX, GY int
+	DefID    PartID
+	GX, GY   int
+	Rotation int
 }
 
 // Def は DefID に対応する PartDef を返す。
@@ -38,10 +44,49 @@ func (p Part) Def() *PartDef { return PartDefByID(p.DefID) }
 // Kind は Def 経由でカテゴリを返す。
 func (p Part) Kind() PartKind { return p.Def().Kind }
 
+// ThrustDir はパーツ（主にスラスタ）の推進方向カテゴリを返す。
+// Rotation のみで決まり、Kind に依存しない（呼び出し側で Kind を確認すること）。
+type ThrustDir int
+
+const (
+	ThrustDirForward  ThrustDir = iota // R=0
+	ThrustDirSideways                  // R=1, R=3
+	ThrustDirBackward                  // R=2
+)
+
+// ThrustDir はスラスタの推進方向を返す。
+func (p Part) ThrustDir() ThrustDir {
+	switch ((p.Rotation % 4) + 4) % 4 {
+	case 0:
+		return ThrustDirForward
+	case 2:
+		return ThrustDirBackward
+	}
+	return ThrustDirSideways
+}
+
 // DrawPart は指定 Kind のアイコンを image 上の (x, y) を該当グリッド左上として描画する。
 // cellSize はグリッド一辺の論理ピクセル数で、エディタのような拡大表示にも対応する。
+// rotation は 90° 単位の時計回り回転（0..3）。0 ならそのまま、それ以外は一時画像経由で回転 blit。
 // バリアント間で見た目は共通（Kind で分岐）。
-func DrawPart(dst *ebiten.Image, kind PartKind, x, y, cellSize float32, theme *ui.Theme) {
+func DrawPart(dst *ebiten.Image, kind PartKind, x, y, cellSize float32, theme *ui.Theme, rotation int) {
+	r := ((rotation % 4) + 4) % 4
+	if r == 0 {
+		drawPartRaw(dst, kind, x, y, cellSize, theme)
+		return
+	}
+	tmp := ebiten.NewImage(int(cellSize), int(cellSize))
+	drawPartRaw(tmp, kind, 0, 0, cellSize, theme)
+	op := &ebiten.DrawImageOptions{}
+	half := float64(cellSize) / 2
+	op.GeoM.Translate(-half, -half)
+	op.GeoM.Rotate(float64(r) * (3.141592653589793 / 2))
+	op.GeoM.Translate(float64(x)+half, float64(y)+half)
+	dst.DrawImage(tmp, op)
+}
+
+// drawPartRaw は回転なしの素体描画。
+func drawPartRaw(dst *ebiten.Image, kind PartKind, x, y, cellSize float32, theme *ui.Theme) {
 	g := cellSize
 	inset := g * 0.12
 	cx := x + g/2

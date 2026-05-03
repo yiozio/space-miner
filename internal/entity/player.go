@@ -36,8 +36,10 @@ type Player struct {
 	VisitedStations    map[string]bool         // 初回入船ダイアログの再生済みステーション名（FullMap 名）
 	Tavern             map[string]*TavernBoard // 各ステーションの酒場掲示板（3 スロット）
 	PiratesKilledByMap map[string]int          // 各 FullMap での累計海賊撃破数（Bounty 進捗の根拠）
-	// 動的なスピード上限。ブースト時に boost 上限へ瞬時上昇し、解除後は徐々に通常上限へ減衰する。
-	speedCap float64
+	// 動的なスピード上限（前後の機軸成分に対して別々）。
+	// ブースト中は boost 上限へ瞬時上昇し、解除後は徐々に通常上限へ減衰する。
+	fwdCap float64
+	bckCap float64
 	// シールド回復制御。
 	noDamageFrames int     // 最後の被弾からの経過フレーム
 	shieldRegenAcc float64 // 1 を超えるごとに ShieldHP を 1 上げる
@@ -161,9 +163,12 @@ type thrusterAgg struct {
 	boostFuelCost   float64
 }
 
-func (p *Player) thrusterStats() thrusterAgg {
-	var t thrusterAgg
+// thrusterStatsByDir はスラスタ集計を「前向き」「後ろ向き」別に返す。
+// 横向き（Rotation=1,3）のスラスタは無視する。
+// Thruster が 1 つも無いときに限り Cockpit の最低限スラスタ性能を前向きに使う。
+func (p *Player) thrusterStatsByDir() (fwd, bck thrusterAgg) {
 	var cockpit *PartDef
+	hasThruster := false
 	for _, part := range p.Parts {
 		d := part.Def()
 		if d == nil {
@@ -171,33 +176,61 @@ func (p *Player) thrusterStats() thrusterAgg {
 		}
 		switch d.Kind {
 		case PartThruster:
-			t.count++
-			t.accel += d.ThrustAccel
-			t.maxSpeed += d.ThrustMaxSpeed
-			t.boostMaxSpeed += d.ThrustBoostMaxSpeed
-			t.boostFuelCost += d.ThrustBoostFuelCost
-			if d.ThrustBoostAccelMul > t.boostAccelMul {
-				t.boostAccelMul = d.ThrustBoostAccelMul
+			hasThruster = true
+			switch part.ThrustDir() {
+			case ThrustDirForward:
+				accumulateThruster(&fwd, d)
+			case ThrustDirBackward:
+				accumulateThruster(&bck, d)
 			}
+			// Sideways はスキップ（推進に寄与しない）
 		case PartCockpit:
 			cockpit = d
 		}
 	}
-	// Thruster が 1 つも無いときに限り、Cockpit の最低限スラスタ性能で代替する。
-	// Thruster が 1 つでもあれば Cockpit は推進寄与しない（二重計上を避ける）。
-	if t.count == 0 && cockpit != nil {
-		t.count = 1
-		t.accel = cockpit.ThrustAccel
-		t.maxSpeed = cockpit.ThrustMaxSpeed
-		t.boostMaxSpeed = cockpit.ThrustBoostMaxSpeed
-		t.boostFuelCost = cockpit.ThrustBoostFuelCost
-		t.boostAccelMul = cockpit.ThrustBoostAccelMul
+	if !hasThruster && cockpit != nil {
+		// 非常用 Cockpit 推進は前向きのみに与える
+		accumulateThruster(&fwd, cockpit)
 	}
-	return t
+	return fwd, bck
+}
+
+// updateCap は方向別の動的スピード上限 cap を更新する。
+// ブースト中は boost 上限に瞬時セット、非ブースト時は通常上限へ overspeedDecel*count で減衰。
+// agg.count == 0 のときは触らない（既存値保持）。
+func updateCap(cap *float64, agg thrusterAgg, boosting bool) {
+	if agg.count == 0 {
+		return
+	}
+	normal := agg.maxSpeed
+	if boosting {
+		*cap = agg.boostMaxSpeed
+		return
+	}
+	if *cap > normal {
+		*cap -= playerOverspeedDecel * float64(agg.count)
+		if *cap < normal {
+			*cap = normal
+		}
+	} else {
+		*cap = normal
+	}
+}
+
+func accumulateThruster(t *thrusterAgg, d *PartDef) {
+	t.count++
+	t.accel += d.ThrustAccel
+	t.maxSpeed += d.ThrustMaxSpeed
+	t.boostMaxSpeed += d.ThrustBoostMaxSpeed
+	t.boostFuelCost += d.ThrustBoostFuelCost
+	if d.ThrustBoostAccelMul > t.boostAccelMul {
+		t.boostAccelMul = d.ThrustBoostAccelMul
+	}
 }
 
 // Update はキー入力に応じて機体を1フレーム動かす。発射は Shoot で別途行う。
-// 加速度・最高速度・ブースト性能は搭載スラスタの def から集計する。
+// 加速度・最高速度・ブースト性能は前向き / 後ろ向きスラスタを別々に集計する。
+// 横向きスラスタは推進に寄与せず、ブースト燃料も消費しない。
 // スラスタが 0 のときは推力ゼロだが、既存の慣性は保持する。
 func (p *Player) Update() {
 	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
@@ -207,52 +240,69 @@ func (p *Player) Update() {
 		p.Angle += playerRotateSpeed
 	}
 
-	ts := p.thrusterStats()
+	fwd, bck := p.thrusterStatsByDir()
+
+	cos, sin := math.Cos(p.Angle), math.Sin(p.Angle)
+	forwardPressed := ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp)
+	backwardPressed := ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyArrowDown)
+	boostHeld := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
 
 	accel := 0.0
+	dirSign := 0.0 // 1 = 前進, -1 = 後進
 	p.ThrustState = ThrustOff
-	if ts.count > 0 && (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp)) {
-		accel = ts.accel
+	p.ThrustActiveDir = ThrustActiveForward
+	switch {
+	case fwd.count > 0 && forwardPressed:
+		accel = fwd.accel
+		dirSign = 1
 		p.ThrustState = ThrustOn
-		// ブーストは燃料が残っているときのみ有効
-		boostHeld := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
+		p.ThrustActiveDir = ThrustActiveForward
 		if boostHeld && p.Fuel > 0 {
-			accel *= ts.boostAccelMul
+			accel *= fwd.boostAccelMul
 			p.ThrustState = ThrustBoost
-			p.Fuel -= ts.boostFuelCost
+			p.Fuel -= fwd.boostFuelCost
+			if p.Fuel < 0 {
+				p.Fuel = 0
+			}
+		}
+	case bck.count > 0 && backwardPressed:
+		accel = bck.accel
+		dirSign = -1
+		p.ThrustState = ThrustOn
+		p.ThrustActiveDir = ThrustActiveBackward
+		if boostHeld && p.Fuel > 0 {
+			accel *= bck.boostAccelMul
+			p.ThrustState = ThrustBoost
+			p.Fuel -= bck.boostFuelCost
 			if p.Fuel < 0 {
 				p.Fuel = 0
 			}
 		}
 	}
-	// 動的スピード上限の更新。
-	// ブースト中: boost 上限に瞬時セット。
-	// 非ブースト時: 通常上限まで毎フレーム少しずつ降下、超えていなければ即時通常上限。
-	if ts.count > 0 {
-		normalLimit := ts.maxSpeed
-		if p.ThrustState == ThrustBoost {
-			p.speedCap = ts.boostMaxSpeed
-		} else if p.speedCap > normalLimit {
-			p.speedCap -= playerOverspeedDecel * float64(ts.count)
-			if p.speedCap < normalLimit {
-				p.speedCap = normalLimit
-			}
-		} else {
-			p.speedCap = normalLimit
-		}
-	}
 
-	p.VX += accel * math.Cos(p.Angle)
-	p.VY += accel * math.Sin(p.Angle)
+	// 前向き/後ろ向きの動的スピード上限を更新。
+	// ブースト中は対応する boost 上限に瞬時セット、非ブースト時は通常上限へ減衰。
+	updateCap(&p.fwdCap, fwd, dirSign == 1 && p.ThrustState == ThrustBoost)
+	updateCap(&p.bckCap, bck, dirSign == -1 && p.ThrustState == ThrustBoost)
 
-	// Thruster がある場合のみ speedCap でハードクランプ。
-	// 通常加速で抜けないようにここでクランプを効かせる。
-	if ts.count > 0 {
-		speed := math.Hypot(p.VX, p.VY)
-		if speed > p.speedCap {
-			p.VX = p.VX / speed * p.speedCap
-			p.VY = p.VY / speed * p.speedCap
+	p.VX += accel * dirSign * cos
+	p.VY += accel * dirSign * sin
+
+	// 機軸（前後軸）に沿った成分でクランプ。横方向（接線方向）はクランプしない。
+	if fwd.count > 0 || bck.count > 0 {
+		fwdDot := p.VX*cos + p.VY*sin
+		sideX, sideY := -sin, cos
+		sideDot := p.VX*sideX + p.VY*sideY
+		// 前向き上限
+		if fwdDot > p.fwdCap {
+			fwdDot = p.fwdCap
 		}
+		// 後ろ向き上限（負方向に対する大きさ）
+		if -fwdDot > p.bckCap {
+			fwdDot = -p.bckCap
+		}
+		p.VX = fwdDot*cos + sideDot*sideX
+		p.VY = fwdDot*sin + sideDot*sideY
 	}
 
 	p.X += p.VX
@@ -303,7 +353,8 @@ func (p *Player) Damage(amount int) {
 }
 
 // Shoot はクールダウンが許せば各 Gun パーツから1発ずつ弾を発射する。
-// 各弾はそのガンの def に応じたダメージ・弾速で生成され、
+// 弾は各 Gun の Rotation に従う向き（ローカル前方を回転したベクトル）で射出され、
+// 発射位置はそのパーツの「前端中心」となる。
 // クールダウンは発射に参加したガンの中で最も長いものを採用する（最遅ガンが律速）。
 // 戻り値は今フレームに発射された弾。クールダウン中なら nil。
 func (p *Player) Shoot() []Bullet {
@@ -313,23 +364,45 @@ func (p *Player) Shoot() []Bullet {
 	var out []Bullet
 	sin, cos := math.Sin(p.Angle), math.Cos(p.Angle)
 	g := float64(GridSize)
+	halfG := g / 2
+	// ローカル → ワールド変換: 画像と同じ R(angle + π/2)
+	// (lx, ly) → (-sin*lx - cos*ly, cos*lx - sin*ly)
+	toWorld := func(lx, ly float64) (float64, float64) {
+		return -sin*lx - cos*ly, cos*lx - sin*ly
+	}
 	maxCooldown := 0
 	for _, part := range p.Parts {
 		d := part.Def()
 		if d == nil || d.Kind != PartGun {
 			continue
 		}
-		// ガンの前端中心（ローカル）。ローカル -y が前方なので GY*g - g/2。
-		lx := float64(part.GX) * g
-		frontLy := float64(part.GY)*g - g/2
-		// ローカル → ワールド: 船体と同じ R(angle + π/2) を適用
-		wox := -sin*lx - cos*frontLy
-		woy := cos*lx - sin*frontLy
+		// パーツの前方単位ベクトル（パーツ局所）。デフォルト (R=0) は (0, -1)。
+		// Rotation R による 90° CW 回転後:
+		//   R=0:(0,-1) R=1:(-1,0) R=2:(0,1) R=3:(1,0)
+		var fxL, fyL float64
+		switch ((part.Rotation % 4) + 4) % 4 {
+		case 0:
+			fxL, fyL = 0, -1
+		case 1:
+			fxL, fyL = -1, 0
+		case 2:
+			fxL, fyL = 0, 1
+		case 3:
+			fxL, fyL = 1, 0
+		}
+		// パーツ前端中心（ローカル）= パーツ中心 + 前方ベクトル × g/2
+		cxL := float64(part.GX) * g
+		cyL := float64(part.GY) * g
+		frontLx := cxL + fxL*halfG
+		frontLy := cyL + fyL*halfG
+		// 発射位置と弾の前方ベクトルをワールドへ変換
+		wox, woy := toWorld(frontLx, frontLy)
+		fwx, fwy := toWorld(fxL, fyL)
 		out = append(out, Bullet{
 			X:      p.X + wox,
 			Y:      p.Y + woy,
-			VX:     cos*d.GunBulletSpeed + p.VX,
-			VY:     sin*d.GunBulletSpeed + p.VY,
+			VX:     fwx*d.GunBulletSpeed + p.VX,
+			VY:     fwy*d.GunBulletSpeed + p.VY,
 			Life:   bulletLifeFrames,
 			Damage: d.GunDamage,
 		})

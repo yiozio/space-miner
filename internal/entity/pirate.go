@@ -102,26 +102,44 @@ func (p *Pirate) Update(playerX, playerY float64) []Bullet {
 }
 
 // shoot は装着 Gun から敵弾（Hostile=true）を発射する。
-// クールダウンは最も遅い Gun の値に揃える（Player.Shoot と同じ規約）。
+// 弾は各 Gun の Rotation に従う方向に射出される（Player.Shoot と同じロジック）。
+// クールダウンは最も遅い Gun の値に揃える。
 func (p *Pirate) shoot() []Bullet {
 	var out []Bullet
 	sin, cos := math.Sin(p.Angle), math.Cos(p.Angle)
 	g := float64(GridSize)
+	halfG := g / 2
+	toWorld := func(lx, ly float64) (float64, float64) {
+		return -sin*lx - cos*ly, cos*lx - sin*ly
+	}
 	maxCD := 0
 	for _, part := range p.Parts {
 		d := part.Def()
 		if d == nil || d.Kind != PartGun {
 			continue
 		}
-		lx := float64(part.GX) * g
-		frontLy := float64(part.GY)*g - g/2
-		wox := -sin*lx - cos*frontLy
-		woy := cos*lx - sin*frontLy
+		var fxL, fyL float64
+		switch ((part.Rotation % 4) + 4) % 4 {
+		case 0:
+			fxL, fyL = 0, -1
+		case 1:
+			fxL, fyL = -1, 0
+		case 2:
+			fxL, fyL = 0, 1
+		case 3:
+			fxL, fyL = 1, 0
+		}
+		cxL := float64(part.GX) * g
+		cyL := float64(part.GY) * g
+		frontLx := cxL + fxL*halfG
+		frontLy := cyL + fyL*halfG
+		wox, woy := toWorld(frontLx, frontLy)
+		fwx, fwy := toWorld(fxL, fyL)
 		out = append(out, Bullet{
 			X:       p.X + wox,
 			Y:       p.Y + woy,
-			VX:      cos*d.GunBulletSpeed + p.VX,
-			VY:      sin*d.GunBulletSpeed + p.VY,
+			VX:      fwx*d.GunBulletSpeed + p.VX,
+			VY:      fwy*d.GunBulletSpeed + p.VY,
 			Life:    bulletLifeFrames,
 			Damage:  d.GunDamage,
 			Hostile: true,
@@ -173,7 +191,7 @@ func (p *Pirate) ensureImage(theme *ui.Theme) {
 	for _, part := range p.Parts {
 		x := float32((part.GX - minGX) * GridSize)
 		y := float32((part.GY - minGY) * GridSize)
-		DrawPart(img, part.Kind(), x, y, float32(GridSize), &pirateTheme)
+		DrawPart(img, part.Kind(), x, y, float32(GridSize), &pirateTheme, part.Rotation)
 	}
 	p.image = img
 	p.imgOffsetX = float64(-minGX*GridSize) + float64(GridSize)/2
