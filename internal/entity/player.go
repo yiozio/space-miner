@@ -53,6 +53,9 @@ func NewPlayerPebble() *Player {
 				{DefID: PartIDGunStarter, GX: 0, GY: -1},
 				{DefID: PartIDCockpit, GX: 0, GY: 0},
 			},
+			// 起点 FullMap (Aurora) のステーション位置からスタートする
+			X:     DefaultStationX,
+			Y:     DefaultStationY,
 			Angle: -math.Pi / 2, // 起動時はビジュアル的に上向き
 		},
 		HP:             PlayerHPDefault,
