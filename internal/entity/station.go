@@ -18,14 +18,16 @@ const (
 
 // Station は宇宙ステーション。当たり判定はなく、背景として存在するのみ。
 // 本体の東側にドック ⊃ を持ち、自機が近づくとアクション可能になる。
+// Name は所属する FullMap 名と一致させ、初回入船ダイアログの判別キーとして用いる。
 type Station struct {
+	Name       string
 	X, Y       float64
 	pulseFrame int
 }
 
-// NewStation は (x, y) にステーションを生成する。
-func NewStation(x, y float64) *Station {
-	return &Station{X: x, Y: y}
+// NewStation は (x, y) に名前付きステーションを生成する。
+func NewStation(name string, x, y float64) *Station {
+	return &Station{Name: name, X: x, Y: y}
 }
 
 // DockX, DockY はドック中心のワールド座標。

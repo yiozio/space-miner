@@ -42,16 +42,17 @@ type Meta struct {
 // PlayerState は Player の永続化対象フィールド。
 // 派生ステータス（MaxHP / MaxFuel / MaxCargo 等）はパーツから再計算するため保存しない。
 type PlayerState struct {
-	Parts          []PartState `json:"parts"`
-	X              float64     `json:"x"`
-	Y              float64     `json:"y"`
-	Angle          float64     `json:"angle"`
-	HP             int         `json:"hp"`
-	ShieldHP       int         `json:"shield_hp"`
-	Fuel           float64     `json:"fuel"`
-	Credits        int         `json:"credits"`
-	Inventory      map[int]int `json:"inventory"`       // ResourceType -> qty
-	PartsInventory map[int]int `json:"parts_inventory"` // PartID -> qty
+	Parts           []PartState     `json:"parts"`
+	X               float64         `json:"x"`
+	Y               float64         `json:"y"`
+	Angle           float64         `json:"angle"`
+	HP              int             `json:"hp"`
+	ShieldHP        int             `json:"shield_hp"`
+	Fuel            float64         `json:"fuel"`
+	Credits         int             `json:"credits"`
+	Inventory       map[int]int     `json:"inventory"`        // ResourceType -> qty
+	PartsInventory  map[int]int     `json:"parts_inventory"`  // PartID -> qty
+	VisitedStations map[string]bool `json:"visited_stations"` // 初回ダイアログ済みステーション名
 }
 
 // PartState は配置済みパーツ 1 つの保存形式。
@@ -226,17 +227,24 @@ func makePlayerState(player *entity.Player) PlayerState {
 			pinv[int(k)] = v
 		}
 	}
+	visited := make(map[string]bool, len(player.VisitedStations))
+	for k, v := range player.VisitedStations {
+		if v {
+			visited[k] = true
+		}
+	}
 	return PlayerState{
-		Parts:          parts,
-		X:              player.X,
-		Y:              player.Y,
-		Angle:          player.Angle,
-		HP:             player.HP,
-		ShieldHP:       player.ShieldHP,
-		Fuel:           player.Fuel,
-		Credits:        player.Credits,
-		Inventory:      inv,
-		PartsInventory: pinv,
+		Parts:           parts,
+		X:               player.X,
+		Y:               player.Y,
+		Angle:           player.Angle,
+		HP:              player.HP,
+		ShieldHP:        player.ShieldHP,
+		Fuel:            player.Fuel,
+		Credits:         player.Credits,
+		Inventory:       inv,
+		PartsInventory:  pinv,
+		VisitedStations: visited,
 	}
 }
 
@@ -257,6 +265,12 @@ func restorePlayer(ps PlayerState) *entity.Player {
 	for k, v := range ps.PartsInventory {
 		pinv[entity.PartID(k)] = v
 	}
+	visited := make(map[string]bool, len(ps.VisitedStations))
+	for k, v := range ps.VisitedStations {
+		if v {
+			visited[k] = true
+		}
+	}
 	p := &entity.Player{
 		Ship: entity.Ship{
 			Parts: parts,
@@ -264,9 +278,10 @@ func restorePlayer(ps PlayerState) *entity.Player {
 			Y:     ps.Y,
 			Angle: ps.Angle,
 		},
-		Credits:        ps.Credits,
-		Inventory:      inv,
-		PartsInventory: pinv,
+		Credits:         ps.Credits,
+		Inventory:       inv,
+		PartsInventory:  pinv,
+		VisitedStations: visited,
 	}
 	p.OnPartsChanged()
 	p.HP = clampInt(ps.HP, 0, p.MaxHP)
