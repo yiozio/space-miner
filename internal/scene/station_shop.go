@@ -55,24 +55,9 @@ type StationShop struct {
 	sessionNet       int
 }
 
-// shopStockIDs は初期店在庫として並べるパーツバリアント。
-var shopStockIDs = []entity.PartID{
-	entity.PartIDGunMkI,
-	entity.PartIDGunMkII,
-	entity.PartIDGunRapid,
-	entity.PartIDThrusterStd,
-	entity.PartIDThrusterLight,
-	entity.PartIDThrusterHeavy,
-	entity.PartIDCargoStd,
-	entity.PartIDArmorStd,
-	entity.PartIDAutoAimStd,
-	entity.PartIDFuelStd,
-	entity.PartIDShieldStd,
-}
-
 // NewStationShop は店舗シーンを生成する。
-// 店在庫は shopStockIDs から固定初期化、自分側は毎フレーム refreshPlayerSlots で
-// プレイヤー状態から再構築する。
+// 店在庫の構成（並び順・初期入荷数）は data_shop.go を参照。
+// 自分側は毎フレーム refreshPlayerSlots でプレイヤー状態から再構築する。
 func NewStationShop(p *entity.Player) *StationShop {
 	s := &StationShop{player: p}
 	for i, id := range shopStockIDs {
@@ -100,35 +85,6 @@ func itemFromDef(d *entity.PartDef) shopItem {
 	}
 }
 
-// shopInitialQuantity は def に応じた初期入荷数を返す。
-// 高価・希少なものは少なめ、消耗系（弾薬枠等）は多めに置く想定。
-func shopInitialQuantity(d *entity.PartDef) int {
-	switch d.Kind {
-	case entity.PartGun:
-		return 4
-	case entity.PartThruster:
-		return 3
-	case entity.PartFuel, entity.PartCargo:
-		return 5
-	case entity.PartAutoAim, entity.PartShield, entity.PartWarp:
-		return 2
-	}
-	return 3
-}
-
-// resourcePrice は資源1単位の価格。
-func resourcePrice(r entity.ResourceType) int {
-	switch r {
-	case entity.ResourceIron:
-		return 5
-	case entity.ResourceCrystal:
-		return 30
-	case entity.ResourceIce:
-		return 8
-	}
-	return 1
-}
-
 // refreshPlayerSlots はプレイヤーの現在状態から自分グリッドを再構築する。
 // 資源を上から、スペアパーツをその後ろに並べる。
 func (ss *StationShop) refreshPlayerSlots() {
@@ -146,7 +102,7 @@ func (ss *StationShop) refreshPlayerSlots() {
 			Item: shopItem{
 				Name:        info.Name,
 				Description: info.Name + " ore. Mining material.",
-				Price:       resourcePrice(rt),
+				Price:       rt.Price(),
 				IsResource:  true,
 				ResType:     rt,
 			},

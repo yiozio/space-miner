@@ -49,62 +49,19 @@ type Exploration struct {
 
 // NewExploration は新しい探索シーンを生成する。
 // 小惑星はゾーン定義に従って実行時に逐次スポーンされるため、開始時には生成しない。
+// World 定義データは entity/data_world.go を参照。
 func NewExploration() *Exploration {
-	const stationX, stationY = 300.0, -250.0
 	e := &Exploration{
 		player:    entity.NewPlayerPebble(),
 		starfield: newStarfield(1),
-		world:     defaultWorld(stationX, stationY),
+		world:     entity.DefaultWorld(),
 		spawnRng:  rand.New(rand.NewSource(2)),
 	}
 	// 起点近くに 1 基の宇宙ステーションを配置（このステーションが起点 FullMap の中心）
-	e.stations = append(e.stations, entity.NewStation(stationX, stationY))
+	e.stations = append(e.stations, entity.NewStation(entity.DefaultStationX, entity.DefaultStationY))
 	// 開始時点でいる FullMap を記録（通常は起点 FullMap）
 	e.lastMap = e.world.Containing(e.player.X, e.player.Y)
 	return e
-}
-
-// defaultWorld は初期世界を返す。だだっ広い World の中に、
-// 起点ステーションを中心とする 60000x60000 の FullMap を 1 つ配置する。
-// （遠方の別 FullMap は将来追加。区画間は空虚で、ワープか忍耐強い航行で到達する想定）
-// ゾーンは 4 つ：起点近くに鉄のみ x2、中盤に鉄+氷、区画の遠い角に水晶+氷。
-func defaultWorld(stationX, stationY float64) *entity.World {
-	return &entity.World{
-		Maps: []entity.FullMap{
-			{
-				CX: stationX, CY: stationY,
-				HalfW: 30000, HalfH: 30000,
-				Zones: []entity.ResourceZone{
-					{
-						CX: 1500, CY: -800, Radius: 4500, MaxAsteroids: 12,
-						Mix: []entity.ResourceWeight{
-							{Resource: entity.ResourceIron, Weight: 1},
-						},
-					},
-					{
-						CX: -2500, CY: 1800, Radius: 4500, MaxAsteroids: 10,
-						Mix: []entity.ResourceWeight{
-							{Resource: entity.ResourceIron, Weight: 1},
-						},
-					},
-					{
-						CX: 9000, CY: 6000, Radius: 7000, MaxAsteroids: 14,
-						Mix: []entity.ResourceWeight{
-							{Resource: entity.ResourceIron, Weight: 2},
-							{Resource: entity.ResourceIce, Weight: 1},
-						},
-					},
-					{
-						CX: -25000, CY: 25000, Radius: 9000, MaxAsteroids: 16,
-						Mix: []entity.ResourceWeight{
-							{Resource: entity.ResourceCrystal, Weight: 2},
-							{Resource: entity.ResourceIce, Weight: 1},
-						},
-					},
-				},
-			},
-		},
-	}
 }
 
 // trySpawnAsteroid は現フレームの生成上限に達していなければ、
