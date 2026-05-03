@@ -345,6 +345,10 @@ func partStatLines(d *entity.PartDef) []string {
 			fmt.Sprintf("BOOST x%.1f   MAX %.1f", d.ThrustBoostAccelMul, d.ThrustBoostMaxSpeed),
 			fmt.Sprintf("FUEL/F %.2f", d.ThrustBoostFuelCost),
 		}
+	case entity.PartFuel:
+		return []string{
+			fmt.Sprintf("FUEL CAP %.0f", d.FuelCapacity),
+		}
 	}
 	return nil
 }

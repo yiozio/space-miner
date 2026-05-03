@@ -27,6 +27,11 @@ type PartDef struct {
 	ThrustBoostAccelMul float64
 	ThrustBoostMaxSpeed float64
 	ThrustBoostFuelCost float64
+
+	// Fuel 用ステータス。Kind != PartFuel の def では未使用。
+	// 全 Fuel パーツの FuelCapacity を合算して MaxFuel になる。
+	// Fuel パーツが 0 個なら MaxFuel = 0（ブースト不可）。
+	FuelCapacity float64
 }
 
 var (

@@ -10,7 +10,6 @@ const (
 	playerRotateSpeed    = 0.06
 	playerOverspeedDecel = 0.10 // 通常最高速度を超えた分を毎フレームこれだけ削る（スラスタ数倍でスケール）
 	PlayerHPDefault      = 100  // 初期 HP / 最大 HP
-	PlayerFuelDefault    = 100  // 初期燃料 / 最大燃料
 	PlayerCreditsDefault = 100  // 初期所持クレジット
 	PlayerInvulnFrames   = 30   // 被弾後の無敵フレーム
 )
@@ -32,27 +31,49 @@ type Player struct {
 }
 
 // NewPlayerPebble は初期機体「Pebble」のプレイヤーを生成する。
-// 配置は docs/GAME_DESIGN.md「サンプル: スターター艇 Pebble」に対応。
+// 最初期はコックピット + 最弱の Starter Gun のみ。
+// スラスタは無しで Cockpit の最低限推進機能で動き、燃料タンクが無いので MaxFuel=0（ブースト不可）。
+// プレイヤーはステーションでパーツを買い足して機体を強化していく。
 func NewPlayerPebble() *Player {
-	return &Player{
+	p := &Player{
 		Ship: Ship{
 			Parts: []Part{
-				{DefID: PartIDThrusterStd, GX: 0, GY: -1},
-				{DefID: PartIDGunMkI, GX: -1, GY: 0},
+				{DefID: PartIDGunStarter, GX: 0, GY: -1},
 				{DefID: PartIDCockpit, GX: 0, GY: 0},
-				{DefID: PartIDGunMkI, GX: 1, GY: 0},
-				{DefID: PartIDFuelStd, GX: 0, GY: 1},
 			},
 			Angle: -math.Pi / 2, // 起動時はビジュアル的に上向き
 		},
 		HP:             PlayerHPDefault,
 		MaxHP:          PlayerHPDefault,
-		Fuel:           PlayerFuelDefault,
-		MaxFuel:        PlayerFuelDefault,
 		Credits:        PlayerCreditsDefault,
 		Inventory:      make(map[ResourceType]int),
 		PartsInventory: make(map[PartID]int),
 	}
+	p.recomputeMaxFuel()
+	return p
+}
+
+// recomputeMaxFuel は搭載 Fuel パーツの FuelCapacity を合算して MaxFuel を更新する。
+// Fuel パーツが 0 個なら MaxFuel = 0。現在の Fuel が新しい MaxFuel を超える場合はクランプする。
+func (p *Player) recomputeMaxFuel() {
+	total := 0.0
+	for _, part := range p.Parts {
+		d := part.Def()
+		if d != nil && d.Kind == PartFuel {
+			total += d.FuelCapacity
+		}
+	}
+	p.MaxFuel = total
+	if p.Fuel > p.MaxFuel {
+		p.Fuel = p.MaxFuel
+	}
+}
+
+// OnPartsChanged はエディタなどでパーツ構成が変わった後に呼ぶ。
+// 描画キャッシュ無効化 + ステータス再計算をまとめて行う。
+func (p *Player) OnPartsChanged() {
+	p.Ship.InvalidateImage()
+	p.recomputeMaxFuel()
 }
 
 // thrusterAgg は搭載スラスタの集計値。

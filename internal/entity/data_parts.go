@@ -14,6 +14,7 @@ type PartID int
 const (
 	PartIDCockpit PartID = iota
 
+	PartIDGunStarter
 	PartIDGunMkI
 	PartIDGunMkII
 	PartIDGunRapid
@@ -46,6 +47,15 @@ func init() {
 	})
 
 	// --- Gun ---
+	// Starter は最初期支給品。性能は最弱で、買い替え前提の入門用。
+	registerPartDef(&PartDef{
+		ID: PartIDGunStarter, Kind: PartGun,
+		Name: "Starter Gun", Desc: "Factory-issue popgun. Low damage, slow rate.",
+		Price:          40,
+		GunDamage:      1,
+		GunCooldown:    20,
+		GunBulletSpeed: 9.0,
+	})
 	registerPartDef(&PartDef{
 		ID: PartIDGunMkI, Kind: PartGun,
 		Name: "Gun Mk-I", Desc: "Standard forward gun.",
@@ -104,7 +114,12 @@ func init() {
 	})
 
 	// --- ユーティリティ系（現状は単一バリアント） ---
-	registerPartDef(&PartDef{ID: PartIDFuelStd, Kind: PartFuel, Name: "Fuel Tank", Desc: "Auxiliary fuel tank.", Price: 70})
+	registerPartDef(&PartDef{
+		ID: PartIDFuelStd, Kind: PartFuel,
+		Name: "Fuel Tank", Desc: "Standard fuel tank.",
+		Price:        70,
+		FuelCapacity: 100,
+	})
 	registerPartDef(&PartDef{ID: PartIDCargoStd, Kind: PartCargo, Name: "Cargo", Desc: "Resource storage.", Price: 60})
 	registerPartDef(&PartDef{ID: PartIDArmorStd, Kind: PartArmor, Name: "Armor", Desc: "Hardened plating.", Price: 100})
 	registerPartDef(&PartDef{ID: PartIDShieldStd, Kind: PartShield, Name: "Shield", Desc: "Shield generator.", Price: 150})
