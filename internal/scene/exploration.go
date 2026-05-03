@@ -369,7 +369,6 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 	// 不透明の黒背景で星空・小惑星を覆う
 	vector.DrawFilledRect(dst, mx, my, miniW, miniH, color.NRGBA{0, 0, 0, 255}, false)
 	vector.StrokeRect(dst, mx, my, miniW, miniH, 1, theme.Line, false)
-	ui.DrawText(dst, "MINIMAP", float64(mx)+10, float64(my)+8, 1.2, theme.LineDim)
 	// プレイヤー（中央点）
 	vector.DrawFilledRect(dst, mx+miniW/2-1, my+miniH/2-1, 2, 2, theme.Line, false)
 	// 小惑星（1 個 = 1 素材で構成されているので、先頭グリッドの素材色で描画）
