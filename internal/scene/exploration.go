@@ -151,7 +151,7 @@ func (e *Exploration) Update(d Director) error {
 	// 全体マップ（最後に入った FullMap を確認）
 	if inpututil.IsKeyJustPressed(ebiten.KeyM) || inpututil.IsKeyJustPressed(ebiten.KeyTab) {
 		e.player.ThrustState = entity.ThrustOff
-		d.Push(NewWorldMapView(e.lastMap, e.stations, e.player.X, e.player.Y))
+		d.Push(NewWorldMapView(e.lastMap, e.stations, e.player.X, e.player.Y, e.player.Angle))
 		return nil
 	}
 
