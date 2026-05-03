@@ -15,16 +15,17 @@ import (
 // スクロールせず、対象 FullMap 全域を画面に収まるようスケールする。
 // ゾーン円・ステーション・自機現在位置を確認できる。
 type WorldMapView struct {
-	fmap     *entity.FullMap
-	stations []*entity.Station
-	playerX  float64
-	playerY  float64
+	fmap        *entity.FullMap
+	stations    []*entity.Station
+	playerX     float64
+	playerY     float64
+	playerAngle float64 // 自機の向き（ワールド座標系。前方は (cos, sin)）
 }
 
-// NewWorldMapView は対象 FullMap・ステーション一覧・自機座標を受け取り、
+// NewWorldMapView は対象 FullMap・ステーション一覧・自機座標と向きを受け取り、
 // 全体マップシーンを生成する。fmap が nil ならプレースホルダ表示。
-func NewWorldMapView(fmap *entity.FullMap, stations []*entity.Station, px, py float64) *WorldMapView {
-	return &WorldMapView{fmap: fmap, stations: stations, playerX: px, playerY: py}
+func NewWorldMapView(fmap *entity.FullMap, stations []*entity.Station, px, py, angle float64) *WorldMapView {
+	return &WorldMapView{fmap: fmap, stations: stations, playerX: px, playerY: py, playerAngle: angle}
 }
 
 func (w *WorldMapView) Update(d Director) error {
@@ -113,14 +114,32 @@ func (w *WorldMapView) Draw(dst *ebiten.Image, d Director) {
 		ui.DrawText(dst, "STATION", float64(sx)+10, float64(sy)-6, 1.0, theme.LineDim)
 	}
 
-	// 自機現在位置（FullMap 内のときのみ）
+	// 自機現在位置（FullMap 内のときのみ）。向きを示す二等辺三角形で描画する
 	if w.fmap.Contains(w.playerX, w.playerY) {
 		px, py := toScreen(w.playerX, w.playerY)
-		cl := float32(6)
-		vector.StrokeLine(dst, px-cl, py, px+cl, py, 2, theme.Line, false)
-		vector.StrokeLine(dst, px, py-cl, px, py+cl, 2, theme.Line, false)
-		ui.DrawText(dst, "YOU", float64(px)+8, float64(py)+4, 1.0, theme.Line)
+		drawPlayerArrow(dst, px, py, w.playerAngle, theme.Line)
 	}
+}
+
+// drawPlayerArrow は (cx, cy) を中心とする二等辺三角形を、
+// angle 方向（前方 = (cos, sin)）を向くように描画する。
+// マップ用の小さなマーカー。サイズは固定で、マップスケールに依存しない。
+func drawPlayerArrow(dst *ebiten.Image, cx, cy float32, angle float64, c color.Color) {
+	const tip = float32(9)  // 中心から先端までの距離
+	const back = float32(6) // 中心から底辺までの距離
+	const half = float32(5) // 底辺の半幅
+	sin, cos := float32(math.Sin(angle)), float32(math.Cos(angle))
+	// ローカル → 画面: (lx, ly) → (cx + lx*cos - ly*sin, cy + lx*sin + ly*cos)
+	rotate := func(lx, ly float32) (float32, float32) {
+		return cx + lx*cos - ly*sin, cy + lx*sin + ly*cos
+	}
+	tipX, tipY := rotate(tip, 0)
+	leftX, leftY := rotate(-back, -half)
+	rightX, rightY := rotate(-back, half)
+	const sw = float32(1.5)
+	vector.StrokeLine(dst, tipX, tipY, leftX, leftY, sw, c, false)
+	vector.StrokeLine(dst, leftX, leftY, rightX, rightY, sw, c, false)
+	vector.StrokeLine(dst, rightX, rightY, tipX, tipY, sw, c, false)
 }
 
 // zoneDominantColor はゾーンの代表色（重みが最大の素材色）を返す。
