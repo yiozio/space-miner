@@ -177,8 +177,20 @@ func (ss *StationShop) Update(d Director) error {
 	return nil
 }
 
+// itemUnitWeight は shopItem 1 単位あたりの所持重量を返す。
+func itemUnitWeight(item shopItem) float64 {
+	if item.IsResource {
+		return item.ResType.Info().Weight
+	}
+	if d := entity.PartDefByID(item.PartID); d != nil {
+		return d.Weight
+	}
+	return 0
+}
+
 // transferOne はカーソル位置のアイテムを1つだけ反対側に移す（=購入 or 売却）。
 // プレイヤーの所持状態（Inventory / PartsInventory / Credits）に直接反映される。
+// 購入時はクレジットと積載重量の両方を満たす場合のみ成立。
 func (ss *StationShop) transferOne() {
 	slot := ss.currentSlot()
 	if slot.Quantity <= 0 {
@@ -186,6 +198,9 @@ func (ss *StationShop) transferOne() {
 	}
 	if ss.side == 0 {
 		if ss.player.Credits < slot.Item.Price {
+			return
+		}
+		if !ss.player.CanAddWeight(itemUnitWeight(slot.Item)) {
 			return
 		}
 		ss.player.Credits -= slot.Item.Price
@@ -319,10 +334,13 @@ func (ss *StationShop) drawInfo(dst *ebiten.Image, theme *ui.Theme, x, y, _ floa
 	ui.DrawText(dst, action, x, lineY, 1.4, theme.Line)
 	lineY += 32
 	ui.DrawText(dst, slot.Item.Description, x, lineY, 1.1, theme.LineDim)
+	// 単位重量（カーゴ計算用）
+	lineY += 22
+	ui.DrawText(dst, fmt.Sprintf("WEIGHT %.1f", itemUnitWeight(slot.Item)), x, lineY, 1.1, theme.LineDim)
 	// パーツの場合は性能ステータスを補足表示
 	if !slot.Item.IsResource {
 		if d := entity.PartDefByID(slot.Item.PartID); d != nil {
-			lineY += 26
+			lineY += 22
 			for _, line := range partStatLines(d) {
 				ui.DrawText(dst, line, x, lineY, 1.1, theme.LineDim)
 				lineY += 18
@@ -357,6 +375,10 @@ func partStatLines(d *entity.PartDef) []string {
 		return []string{
 			fmt.Sprintf("SHIELD HP +%d", d.ShieldHP),
 			"REGEN AFTER 2s NO DMG",
+		}
+	case entity.PartCargo:
+		return []string{
+			fmt.Sprintf("CARGO CAP +%.0f", d.CargoCapacity),
 		}
 	}
 	return nil

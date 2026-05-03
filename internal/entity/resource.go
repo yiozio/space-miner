@@ -6,10 +6,12 @@ import "image/color"
 // 個別の資源データ（名前・色・HP・価格）は data_resources.go を参照。
 
 // ResourceInfo は資源種別ごとの視覚＆HP情報。
+// Weight は所持時の単位重量（カーゴ計算用）。
 type ResourceInfo struct {
-	Name  string
-	Color color.NRGBA
-	MaxHP int
+	Name   string
+	Color  color.NRGBA
+	MaxHP  int
+	Weight float64
 }
 
 // Info は ResourceType の表示・HP情報を返す。
@@ -27,5 +29,5 @@ func (r ResourceType) Price() int {
 
 // AllResourceTypes は全資源種別を順に返す（HUD 表示や生成で使用）。
 func AllResourceTypes() []ResourceType {
-	return []ResourceType{ResourceIron, ResourceCrystal, ResourceIce}
+	return []ResourceType{ResourceIron, ResourceBronze, ResourceIce}
 }

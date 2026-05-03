@@ -13,22 +13,22 @@ type ResourceType int
 
 const (
 	ResourceIron ResourceType = iota
-	ResourceCrystal
+	ResourceBronze
 	ResourceIce
 	resourceCount
 )
 
-// resourceInfos は各資源の表示・HP情報。
-// Color はグリッド表示色（種別判別用）、MaxHP はグリッド毎の最大HP。
+// resourceInfos は各資源の表示・HP・重量情報。
+// Color はグリッド表示色（種別判別用）、MaxHP はグリッド毎の最大HP、Weight は単位重量。
 var resourceInfos = [resourceCount]ResourceInfo{
-	ResourceIron:    {Name: "IRON", Color: color.NRGBA{0xc8, 0xc8, 0xc8, 0xff}, MaxHP: 3},
-	ResourceCrystal: {Name: "CRYSTAL", Color: color.NRGBA{0x80, 0x80, 0xff, 0xff}, MaxHP: 8},
-	ResourceIce:     {Name: "ICE", Color: color.NRGBA{0x80, 0xe0, 0xff, 0xff}, MaxHP: 2},
+	ResourceIron:   {Name: "IRON", Color: color.NRGBA{0xc8, 0xc8, 0xc8, 0xff}, MaxHP: 3, Weight: 1.0},
+	ResourceBronze: {Name: "BRONZE", Color: color.NRGBA{0xcd, 0x7f, 0x32, 0xff}, MaxHP: 8, Weight: 1.2},
+	ResourceIce:    {Name: "ICE", Color: color.NRGBA{0x80, 0xe0, 0xff, 0xff}, MaxHP: 2, Weight: 0.7},
 }
 
 // resourcePrices は資源 1 単位あたりの売買単価（クレジット）。
 var resourcePrices = [resourceCount]int{
-	ResourceIron:    5,
-	ResourceCrystal: 30,
-	ResourceIce:     8,
+	ResourceIron:   5,
+	ResourceBronze: 30,
+	ResourceIce:    8,
 }

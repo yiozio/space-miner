@@ -41,6 +41,13 @@ type PartDef struct {
 	// 全 Shield パーツの ShieldHP を合算して MaxShieldHP になる。
 	// 被弾はシールドが先に吸収し、無ダメージが一定時間続くと自動回復する。
 	ShieldHP int
+
+	// 所持重量（カーゴ）系ステータス。
+	// CargoCapacity は搭載時に MaxCargo に加算される積載上限。
+	// 通常は Cockpit と Cargo パーツが提供する。
+	// Weight はそのパーツをスペアパーツとして所持する際の単位重量。
+	CargoCapacity float64
+	Weight        float64
 }
 
 var (

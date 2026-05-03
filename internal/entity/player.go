@@ -28,6 +28,7 @@ type Player struct {
 	MaxShieldHP    int // 全 Shield パーツの ShieldHP 合算
 	Fuel           float64
 	MaxFuel        float64
+	MaxCargo       float64 // Cockpit + Cargo パーツの CargoCapacity 合算
 	Credits        int
 	InvulnTimer    int // 被弾後の残無敵フレーム（描画フラッシュにも使う）
 	fireTimer      int
@@ -66,13 +67,15 @@ func NewPlayerPebble() *Player {
 	return p
 }
 
-// recomputeStats は搭載パーツから派生するステータス（MaxHP / MaxShieldHP / MaxFuel）を再計算し、
+// recomputeStats は搭載パーツから派生するステータス（MaxHP / MaxShieldHP / MaxFuel / MaxCargo）を再計算し、
 // 現在値を新しい上限にクランプする。
 // Armor 0 個 → 基本 HP のみ、Shield 0 個 → MaxShieldHP=0、Fuel 0 個 → MaxFuel=0。
+// MaxCargo は Cockpit と全 Cargo パーツの CargoCapacity を合算（Cockpit が最低限の積載量を提供する）。
 func (p *Player) recomputeStats() {
 	armor := 0
 	shield := 0
 	fuel := 0.0
+	cargo := 0.0
 	for _, part := range p.Parts {
 		d := part.Def()
 		if d == nil {
@@ -86,10 +89,13 @@ func (p *Player) recomputeStats() {
 		case PartFuel:
 			fuel += d.FuelCapacity
 		}
+		// Cockpit と Cargo は Kind に関係なく CargoCapacity を加算する（他カテゴリは値が 0）
+		cargo += d.CargoCapacity
 	}
 	p.MaxHP = PlayerHPDefault + armor
 	p.MaxShieldHP = shield
 	p.MaxFuel = fuel
+	p.MaxCargo = cargo
 	if p.HP > p.MaxHP {
 		p.HP = p.MaxHP
 	}
@@ -99,6 +105,34 @@ func (p *Player) recomputeStats() {
 	if p.Fuel > p.MaxFuel {
 		p.Fuel = p.MaxFuel
 	}
+	// 注: パーツ取り外しで MaxCargo が現在の積載量より小さくなる場合があるが、
+	// 既に持っている荷物を強制で破棄するのは避け、超過状態は許容する（買取・売却で減らす）。
+}
+
+// CargoLoad は現在の積載重量を返す（資源 + スペアパーツ）。
+// 設置済みパーツは「機体構造」として扱い、積載には含めない。
+func (p *Player) CargoLoad() float64 {
+	total := 0.0
+	for r, qty := range p.Inventory {
+		if qty <= 0 {
+			continue
+		}
+		total += r.Info().Weight * float64(qty)
+	}
+	for id, qty := range p.PartsInventory {
+		if qty <= 0 {
+			continue
+		}
+		if d := PartDefByID(id); d != nil {
+			total += d.Weight * float64(qty)
+		}
+	}
+	return total
+}
+
+// CanAddWeight は w 分の重量が積載上限内に収まるか返す。
+func (p *Player) CanAddWeight(w float64) bool {
+	return p.CargoLoad()+w <= p.MaxCargo+1e-9
 }
 
 // OnPartsChanged はエディタなどでパーツ構成が変わった後に呼ぶ。
@@ -307,9 +341,18 @@ func (p *Player) Shoot() []Bullet {
 }
 
 // AddResource はインベントリに資源を加算する。
-func (p *Player) AddResource(r ResourceType, qty int) {
+// 積載超過になる場合は false を返し、加算しない（呼び出し側で拾い直し等を判断する）。
+// qty が非正の場合は減算となるため重量チェックを行わない。
+func (p *Player) AddResource(r ResourceType, qty int) bool {
 	if p.Inventory == nil {
 		p.Inventory = make(map[ResourceType]int)
 	}
+	if qty > 0 {
+		w := r.Info().Weight * float64(qty)
+		if !p.CanAddWeight(w) {
+			return false
+		}
+	}
 	p.Inventory[r] += qty
+	return true
 }

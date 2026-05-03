@@ -48,11 +48,11 @@ func DefaultWorld() *World {
 							{Resource: ResourceIce, Weight: 1},
 						},
 					},
-					// 区画の遠い角: 水晶+氷の混合ゾーン
+					// 区画の遠い角: 青銅+氷の混合ゾーン
 					{
 						CX: -25000, CY: 25000, Radius: 9000, MaxAsteroids: 16,
 						Mix: []ResourceWeight{
-							{Resource: ResourceCrystal, Weight: 2},
+							{Resource: ResourceBronze, Weight: 2},
 							{Resource: ResourceIce, Weight: 1},
 						},
 					},
