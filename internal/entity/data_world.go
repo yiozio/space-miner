@@ -29,20 +29,20 @@ func DefaultWorld() *World {
 				Zones: []ResourceZone{
 					// 起点近くの鉄ゾーン x2
 					{
-						CX: 1500, CY: -800, Radius: 4500, MaxAsteroids: 12,
+						CX: 5000, CY: -800, Radius: 4500, MaxAsteroids: 12,
 						Mix: []ResourceWeight{
 							{Resource: ResourceIron, Weight: 1},
 						},
 					},
 					{
-						CX: -2500, CY: 1800, Radius: 4500, MaxAsteroids: 10,
+						CX: -5000, CY: 1800, Radius: 4500, MaxAsteroids: 10,
 						Mix: []ResourceWeight{
 							{Resource: ResourceIron, Weight: 1},
 						},
 					},
 					// 中盤: 鉄+氷の混合ゾーン
 					{
-						CX: 9000, CY: 6000, Radius: 7000, MaxAsteroids: 14,
+						CX: 9000, CY: 8000, Radius: 7000, MaxAsteroids: 14,
 						Mix: []ResourceWeight{
 							{Resource: ResourceIron, Weight: 2},
 							{Resource: ResourceIce, Weight: 1},
