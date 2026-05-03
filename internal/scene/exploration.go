@@ -10,6 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/yiozio/space-miner/internal/entity"
+	"github.com/yiozio/space-miner/internal/save"
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
@@ -52,7 +53,25 @@ type Exploration struct {
 	autoAimGridIdx int
 	autoAimDmgAcc  float64
 	autoAimBeams   []autoAimBeam // 当該フレームに発射中のビーム（描画用）
+
+	// プレイ時間（秒）。ロード時は保存値から再開、新規ゲームは 0。
+	// 60fps 想定で毎フレーム 1/60 ずつ加算する。
+	playtime float64
 }
+
+// CurrentMapName は現在いる FullMap 名を返す（区画外なら空文字）。
+func (e *Exploration) CurrentMapName() string {
+	if e.lastMap == nil {
+		return ""
+	}
+	return e.lastMap.Name
+}
+
+// Playtime は累計プレイ時間（秒）を返す。
+func (e *Exploration) Playtime() float64 { return e.playtime }
+
+// Player はメニュー等から現在のプレイヤーを参照するためのアクセサ。
+func (e *Exploration) Player() *entity.Player { return e.player }
 
 // autoAimBeam は1パーツ → 対象グリッドのビーム描画情報。
 type autoAimBeam struct {
@@ -60,20 +79,26 @@ type autoAimBeam struct {
 	toX, toY     float64
 }
 
-// NewExploration は新しい探索シーンを生成する。
-// 小惑星はゾーン定義に従って実行時に逐次スポーンされるため、開始時には生成しない。
-// World 定義データは entity/data_world.go を参照。
+// NewExploration は新規ゲーム用の探索シーンを生成する（Pebble 初期構成、playtime=0）。
 func NewExploration() *Exploration {
+	return NewExplorationFromPlayer(entity.NewPlayerPebble(), 0)
+}
+
+// NewExplorationFromPlayer は指定の Player（セーブから復元したものなど）と
+// 累計プレイ時間で探索シーンを生成する。World 定義は固定で entity.DefaultWorld()。
+// 小惑星はゾーン定義に従って実行時に逐次スポーンされるため、開始時には生成しない。
+func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 	e := &Exploration{
-		player:         entity.NewPlayerPebble(),
+		player:         p,
 		starfield:      newStarfield(1),
 		world:          entity.DefaultWorld(),
 		spawnRng:       rand.New(rand.NewSource(2)),
 		autoAimGridIdx: -1,
+		playtime:       playtime,
 	}
 	// 起点近くに 1 基の宇宙ステーションを配置（このステーションが起点 FullMap の中心）
 	e.stations = append(e.stations, entity.NewStation(entity.DefaultStationX, entity.DefaultStationY))
-	// 開始時点でいる FullMap を記録（通常は起点 FullMap）
+	// 開始時点でいる FullMap を記録（区画外なら nil）
 	e.lastMap = e.world.Containing(e.player.X, e.player.Y)
 	return e
 }
@@ -190,7 +215,11 @@ func (e *Exploration) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		// メニュー中はアフターバーナーが残らないよう推力状態をリセット
 		e.player.ThrustState = entity.ThrustOff
-		d.Push(NewMenu())
+		d.Push(NewMenu(save.Context{
+			Player:   e.player,
+			Playtime: e.playtime,
+			MapName:  e.CurrentMapName(),
+		}))
 		return nil
 	}
 
@@ -202,6 +231,7 @@ func (e *Exploration) Update(d Director) error {
 	}
 
 	e.player.Update()
+	e.playtime += 1.0 / 60.0 // ebitengine 既定 TPS（60）想定の累計プレイ時間
 
 	// 現在いる FullMap を更新（区画外なら直前の値を保持）
 	if m := e.world.Containing(e.player.X, e.player.Y); m != nil {

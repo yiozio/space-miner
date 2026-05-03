@@ -24,8 +24,10 @@ type ResourceZone struct {
 
 // FullMap は世界の一区画。中心 (CX, CY) ・半幅/半高 HalfW/HalfH の矩形領域で、
 // 内部に複数のゾーンを持つ（典型的には宇宙ステーションを中心に取る）。
-// 区画外には何も生成されない（ワープあるいは忍耐強く航行することで別区画に到達する想定）。
+// Name は UI 表示用の宙域名。区画外には何も生成されない
+// （ワープあるいは忍耐強く航行することで別区画に到達する想定）。
 type FullMap struct {
+	Name         string
 	CX, CY       float64
 	HalfW, HalfH float64
 	Zones        []ResourceZone
