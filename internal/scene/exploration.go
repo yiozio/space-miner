@@ -322,6 +322,9 @@ func (e *Exploration) Update(d Director) error {
 	// 自機 ⇄ 小惑星の衝突解決（押し戻し＋反射＋ダメージ）
 	e.handlePlayerAsteroidCollisions()
 
+	// 自機 ⇄ 海賊の衝突解決（押し戻し＋反射＋相互ダメージ）
+	e.handlePlayerPirateCollisions()
+
 	// ステーションのパルス更新とドック近接判定
 	e.activeDock = nil
 	for _, s := range e.stations {
@@ -551,6 +554,95 @@ func (e *Exploration) handlePlayerAsteroidCollisions() {
 	}
 }
 
+// handlePlayerPirateCollisions は自機パーツと海賊機パーツの円-円判定を行い、
+// 重なりを双方半分ずつ押し戻し、相対法線速度に反発係数を掛けて両機にインパルスを与え、
+// 衝突相対速度に応じて両者にダメージを与える（自機・海賊の質量を等しいと仮定）。
+func (e *Exploration) handlePlayerPirateCollisions() {
+	if len(e.pirates) == 0 {
+		return
+	}
+	p := e.player
+	g := float64(entity.GridSize)
+	sumR := g // 双方のパーツ半径 (g/2) + (g/2)
+
+	// 自機パーツの船体ローカル → ワールド変換オフセット
+	pSin, pCos := math.Sin(p.Angle), math.Cos(p.Angle)
+	type partOffset struct{ ox, oy float64 }
+	pOffsets := make([]partOffset, len(p.Parts))
+	for i, part := range p.Parts {
+		lx := float64(part.GX) * g
+		ly := float64(part.GY) * g
+		pOffsets[i] = partOffset{
+			ox: -pSin*lx - pCos*ly,
+			oy: pCos*lx - pSin*ly,
+		}
+	}
+
+	for _, pr := range e.pirates {
+		if pr.HP <= 0 {
+			continue
+		}
+		prSin, prCos := math.Sin(pr.Angle), math.Cos(pr.Angle)
+		for _, prPart := range pr.Parts {
+			lx2 := float64(prPart.GX) * g
+			ly2 := float64(prPart.GY) * g
+			prCX := pr.X + (-prSin*lx2 - prCos*ly2)
+			prCY := pr.Y + (prCos*lx2 - prSin*ly2)
+
+			for i := range p.Parts {
+				pCX := p.X + pOffsets[i].ox
+				pCY := p.Y + pOffsets[i].oy
+
+				dx := pCX - prCX
+				dy := pCY - prCY
+				dist := math.Hypot(dx, dy)
+				if dist >= sumR {
+					continue
+				}
+				if dist < 0.001 {
+					dx, dy, dist = 1, 0, 1
+				}
+				nx := dx / dist
+				ny := dy / dist
+				overlap := sumR - dist
+
+				// 双方を半分ずつ押し戻す（等質量）
+				push := overlap / 2
+				p.X += nx * push
+				p.Y += ny * push
+				pr.X -= nx * push
+				pr.Y -= ny * push
+				prCX -= nx * push
+				prCY -= ny * push
+
+				// 相対速度の法線成分（負なら接近中）
+				rvx := p.VX - pr.VX
+				rvy := p.VY - pr.VY
+				vNormal := rvx*nx + rvy*ny
+				if vNormal >= 0 {
+					continue
+				}
+
+				impactSpeed := -vNormal
+				if impactSpeed > collisionDamageThreshold {
+					dmg := int((impactSpeed - collisionDamageThreshold) * collisionDamageFactor)
+					if dmg > 0 {
+						p.Damage(dmg)
+						pr.TakeHit(dmg)
+					}
+				}
+
+				// 等質量・反発係数 e の弾性衝突インパルス
+				j := -(1 + collisionRestitution) * vNormal / 2
+				p.VX += j * nx
+				p.VY += j * ny
+				pr.VX -= j * nx
+				pr.VY -= j * ny
+			}
+		}
+	}
+}
+
 func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 	theme := d.Theme()
 	dst.Fill(theme.Background)
@@ -604,15 +696,13 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		vector.StrokeLine(dst, x1, y1, x2, y2, 1.5, beamColor, false)
 	}
 
-	// プレイヤー（被弾無敵中は数フレームおきに点滅）
+	// プレイヤー
 	psx := e.player.X - e.cameraX + cx
 	psy := e.player.Y - e.cameraY + cy
-	if e.player.InvulnTimer == 0 || (e.player.InvulnTimer/4)%2 == 0 {
-		e.player.DrawAt(dst, psx, psy, theme)
-		// シールドが 1 以上なら、外周（隣接面以外）を点滅描画
-		if e.player.ShieldHP > 0 {
-			e.player.Ship.DrawShieldOutline(dst, psx, psy, theme)
-		}
+	e.player.DrawAt(dst, psx, psy, theme)
+	// シールドが 1 以上なら、外周（隣接面以外）を描画
+	if e.player.ShieldHP > 0 {
+		e.player.Ship.DrawShieldOutline(dst, psx, psy, theme)
 	}
 
 	// ドック近接プロンプト
