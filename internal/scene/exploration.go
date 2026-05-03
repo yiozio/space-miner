@@ -57,7 +57,16 @@ type Exploration struct {
 	// プレイ時間（秒）。ロード時は保存値から再開、新規ゲームは 0。
 	// 60fps 想定で毎フレーム 1/60 ずつ加算する。
 	playtime float64
+
+	// ワープ進行状態。warpTimer > 0 の間は通常の Update をスキップしてアニメ専用に。
+	warpTimer int
+	warpDest  *entity.FullMap
 }
+
+const (
+	// ワープアニメ全体のフレーム数（60fps で 1.5 秒）。
+	warpDuration = 90
+)
 
 // CurrentMapName は現在いる FullMap 名を返す（区画外なら空文字）。
 func (e *Exploration) CurrentMapName() string {
@@ -96,8 +105,11 @@ func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 		autoAimGridIdx: -1,
 		playtime:       playtime,
 	}
-	// 起点近くに 1 基の宇宙ステーションを配置（このステーションが起点 FullMap の中心）
-	e.stations = append(e.stations, entity.NewStation(entity.DefaultStationX, entity.DefaultStationY))
+	// 各 FullMap の中心にステーションを配置（恒星マップ／ワープ先選択でも参照される）
+	for i := range e.world.Maps {
+		m := &e.world.Maps[i]
+		e.stations = append(e.stations, entity.NewStation(m.CX, m.CY))
+	}
 	// 開始時点でいる FullMap を記録（区画外なら nil）
 	e.lastMap = e.world.Containing(e.player.X, e.player.Y)
 	return e
@@ -212,6 +224,12 @@ func (e *Exploration) trySpawnAsteroid() {
 }
 
 func (e *Exploration) Update(d Director) error {
+	// ワープ中は専用アニメだけ進め、入力はすべて無視
+	if e.warpTimer > 0 {
+		e.tickWarp()
+		return nil
+	}
+
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		// メニュー中はアフターバーナーが残らないよう推力状態をリセット
 		e.player.ThrustState = entity.ThrustOff
@@ -227,6 +245,17 @@ func (e *Exploration) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyM) || inpututil.IsKeyJustPressed(ebiten.KeyTab) {
 		e.player.ThrustState = entity.ThrustOff
 		d.Push(NewWorldMapView(e.lastMap, e.stations, e.player.X, e.player.Y, e.player.Angle))
+		return nil
+	}
+
+	// 恒星マップ → ワープ
+	if inpututil.IsKeyJustPressed(ebiten.KeyN) {
+		e.player.ThrustState = entity.ThrustOff
+		current := e.CurrentMapName()
+		d.Push(NewStarMap(e.world, current, func(d Director, dest *entity.FullMap) bool {
+			e.startWarp(dest)
+			return true
+		}))
 		return nil
 	}
 
@@ -455,6 +484,13 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 
 	e.starfield.draw(dst, e.cameraX, e.cameraY, theme)
 
+	// 背景天体: 各 FullMap の Body を、星空の手前・ステーションの奥に大きく描画する。
+	// 区画外（lastMap=nil）では描かない。プレイ可能領域 ±30000 内なら近隣区画の Body も視野に入る。
+	for i := range e.world.Maps {
+		m := &e.world.Maps[i]
+		drawCelestialBackdrop(dst, &m.Body, m.CX, m.CY, e.cameraX, e.cameraY, cx, cy)
+	}
+
 	// 宇宙ステーション（背景扱い）
 	for _, s := range e.stations {
 		s.Draw(dst, s.X-e.cameraX+cx, s.Y-e.cameraY+cy, theme)
@@ -504,6 +540,12 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		promptScale := 1.6
 		pw, _ := ui.MeasureText(prompt, promptScale)
 		ui.DrawText(dst, prompt, psx-pw/2, psy+72, promptScale, theme.Line)
+	}
+
+	// ワープ中: 線流れ + ホワイトアウトを最前面に重ね、HUD を非表示にする
+	if e.warpTimer > 0 {
+		e.drawWarpOverlay(dst, theme, sw, sh)
+		return
 	}
 
 	e.drawHUD(dst, theme, sw, sh)
@@ -570,6 +612,121 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		vector.StrokeRect(dst, nx-3, ny-3, 6, 6, 1, theme.Line, false)
 	}
 
-	ui.DrawText(dst, "[ WASD: Move    Shift: Boost    Space: Fire / Dock    M: Map    Esc: Menu ]",
+	ui.DrawText(dst, "[ WASD: Move    Shift: Boost    Space: Fire/Dock    M: Map    N: Warp    Esc: Menu ]",
 		20, float64(sh)-30, 1.5, theme.LineDim)
+}
+
+// startWarp はワープ確定時に呼ばれる。自機を目的地方向に向け、速度をリセットして
+// アニメ用タイマーを起動する。実際のテレポートはアニメ中点で行う。
+//
+// 機首角度は「現在の FullMap 中心 → 目的地 FullMap 中心」の世界座標差から計算する。
+// 恒星マップは同じ世界座標を使ってレイアウトしているため、星マップで見た方向と一致する。
+func (e *Exploration) startWarp(dest *entity.FullMap) {
+	if dest == nil {
+		return
+	}
+	var dx, dy float64
+	if e.lastMap != nil {
+		dx = dest.CX - e.lastMap.CX
+		dy = dest.CY - e.lastMap.CY
+	} else {
+		// 区画外: 現在地 → 目的地 で代替
+		dx = dest.CX - e.player.X
+		dy = dest.CY - e.player.Y
+	}
+	if dx != 0 || dy != 0 {
+		e.player.Angle = math.Atan2(dy, dx)
+	}
+	e.player.VX = 0
+	e.player.VY = 0
+	e.player.ThrustState = entity.ThrustOff
+	e.warpDest = dest
+	e.warpTimer = warpDuration
+}
+
+// tickWarp は warpTimer > 0 の間、ワープアニメを 1 フレーム進める。
+// 中点フレームで実際の座標移動と一時状態のクリアを行う。
+func (e *Exploration) tickWarp() {
+	e.warpTimer--
+
+	if e.warpTimer == warpDuration/2 {
+		dest := e.warpDest
+		if dest != nil {
+			e.player.X = dest.CX
+			e.player.Y = dest.CY
+			e.player.VX = 0
+			e.player.VY = 0
+			e.lastMap = dest
+			// ワープ前の局所状態（小惑星・ピックアップ・弾・自動照準）は持ち越さない
+			e.asteroids = e.asteroids[:0]
+			e.pickups = e.pickups[:0]
+			e.bullets = e.bullets[:0]
+			e.autoAimTarget = nil
+			e.autoAimGridIdx = -1
+			e.autoAimDmgAcc = 0
+		}
+	}
+
+	e.cameraX = e.player.X
+	e.cameraY = e.player.Y
+
+	if e.warpTimer == 0 {
+		e.warpDest = nil
+	}
+}
+
+// drawWarpOverlay はワープアニメの線流れ + ホワイトアウトを描画する。
+// 各線は始点 (cx, cy) から機首方向（前方）に streakLen だけ伸ばす。
+// これで線の向きが自機の向きと一致する。ホワイトアウトは中点でピーク。
+func (e *Exploration) drawWarpOverlay(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
+	progress := float64(warpDuration-e.warpTimer) / float64(warpDuration)
+	pulse := math.Sin(progress * math.Pi) // 0 -> 1 -> 0
+
+	// 機首方向ベクトル（前方）
+	streakLen := 60.0 + 280.0*pulse
+	forwardX := math.Cos(e.player.Angle) * streakLen
+	forwardY := math.Sin(e.player.Angle) * streakLen
+
+	// 決定論的に線をばらまく（フレーム番号からシード）
+	rng := rand.New(rand.NewSource(int64(warpDuration-e.warpTimer) * 7919))
+	const numStreaks = 70
+	for i := 0; i < numStreaks; i++ {
+		cx := rng.Float64() * float64(sw)
+		cy := rng.Float64() * float64(sh)
+		x1 := float32(cx)
+		y1 := float32(cy)
+		x2 := float32(cx + forwardX)
+		y2 := float32(cy + forwardY)
+		vector.StrokeLine(dst, x1, y1, x2, y2, 1.5, theme.Line, false)
+	}
+
+	// ホワイトアウト（sin で中点ピーク）
+	alpha := uint8(pulse * 255)
+	vector.DrawFilledRect(dst, 0, 0, float32(sw), float32(sh), color.NRGBA{255, 255, 255, alpha}, false)
+}
+
+// drawCelestialBackdrop は天体を (mapCX, mapCY) + Backdrop オフセットの位置に
+// 円として描画する。BackdropRadius が 0 の場合は何もしない。
+// 描画は半透明の塗り + 縁線で「背景にある巨大な球体」感を出す。
+func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
+	mapCX, mapCY, cameraX, cameraY, screenCX, screenCY float64) {
+	if body == nil || body.BackdropRadius <= 0 {
+		return
+	}
+	wx := mapCX + body.BackdropOffsetX
+	wy := mapCY + body.BackdropOffsetY
+	sx := float32(wx - cameraX + screenCX)
+	sy := float32(wy - cameraY + screenCY)
+	r := float32(body.BackdropRadius)
+	// 視界外なら早期スキップ（半径分のマージン込み）
+	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
+	if sx+r < 0 || sx-r > float32(sw) || sy+r < 0 || sy-r > float32(sh) {
+		return
+	}
+	// 本体: 半透明塗り
+	fill := body.Color
+	fill.A = 110
+	vector.DrawFilledCircle(dst, sx, sy, r, fill, true)
+	// 輪郭: 不透明
+	vector.StrokeCircle(dst, sx, sy, r, 1.5, body.Color, true)
 }

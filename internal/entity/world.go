@@ -26,11 +26,13 @@ type ResourceZone struct {
 // 内部に複数のゾーンを持つ（典型的には宇宙ステーションを中心に取る）。
 // Name は UI 表示用の宙域名。区画外には何も生成されない
 // （ワープあるいは忍耐強く航行することで別区画に到達する想定）。
+// Body はこの区画に紐づく背景天体（同名で恒星マップにも登場）。
 type FullMap struct {
 	Name         string
 	CX, CY       float64
 	HalfW, HalfH float64
 	Zones        []ResourceZone
+	Body         Celestial
 }
 
 // Contains は (x, y) がこの区画内にあるか返す。
@@ -40,8 +42,34 @@ func (m *FullMap) Contains(x, y float64) bool {
 
 // World はだだっ広い宇宙全体。複数の FullMap を含み、World 自身には境界がない。
 // 区画は遠く離れて点在し、その間は空虚。
+// Star は所属する恒星系の中心となる恒星（FullMap は持たない）。
 type World struct {
+	Star Celestial
 	Maps []FullMap
+}
+
+// FindBody は名前一致で恒星 / 各 FullMap の Body を探す。なければ nil。
+// 恒星マップで親惑星の参照などに使用する。
+func (w *World) FindBody(name string) *Celestial {
+	if w.Star.Name == name {
+		return &w.Star
+	}
+	for i := range w.Maps {
+		if w.Maps[i].Body.Name == name {
+			return &w.Maps[i].Body
+		}
+	}
+	return nil
+}
+
+// MapByName は名前一致で FullMap を返す。なければ nil。
+func (w *World) MapByName(name string) *FullMap {
+	for i := range w.Maps {
+		if w.Maps[i].Name == name {
+			return &w.Maps[i]
+		}
+	}
+	return nil
 }
 
 // Containing は (x, y) を含む最初の FullMap を返す。なければ nil。
