@@ -22,16 +22,28 @@ type ResourceZone struct {
 	Mix          []ResourceWeight
 }
 
+// PirateZone は海賊出没エリア。中心 (CX, CY) ・半径 Radius の円内で、
+// プレイヤーが近づくと海賊が出没する。MaxPirates はゾーン中心での同時出現上限。
+// Patterns は出現候補のパターン ID 群（複数指定すると等確率で抽選）。
+type PirateZone struct {
+	CX, CY     float64
+	Radius     float64
+	MaxPirates int
+	Patterns   []PiratePatternID
+}
+
 // FullMap は世界の一区画。中心 (CX, CY) ・半幅/半高 HalfW/HalfH の矩形領域で、
 // 内部に複数のゾーンを持つ（典型的には宇宙ステーションを中心に取る）。
 // Name は UI 表示用の宙域名。区画外には何も生成されない
 // （ワープあるいは忍耐強く航行することで別区画に到達する想定）。
 // Body はこの区画に紐づく背景天体（同名で恒星マップにも登場）。
+// PirateZones は宇宙海賊の出没エリア（オプション）。
 type FullMap struct {
 	Name         string
 	CX, CY       float64
 	HalfW, HalfH float64
 	Zones        []ResourceZone
+	PirateZones  []PirateZone
 	Body         Celestial
 }
 
@@ -106,6 +118,47 @@ func (w *World) SpawnCap(px, py float64) int {
 		cap += float64(z.MaxAsteroids) * (1 - d/z.Radius)
 	}
 	return int(cap)
+}
+
+// PirateSpawnCap は (px, py) を中心とした、現フレームの海賊同時出現上限。
+// 各 PirateZone の線形フォールオフ × MaxPirates を合算する。区画外なら 0。
+func (w *World) PirateSpawnCap(px, py float64) int {
+	m := w.Containing(px, py)
+	if m == nil {
+		return 0
+	}
+	cap := 0.0
+	for i := range m.PirateZones {
+		z := &m.PirateZones[i]
+		d := math.Hypot(px-z.CX, py-z.CY)
+		if d >= z.Radius {
+			continue
+		}
+		cap += float64(z.MaxPirates) * (1 - d/z.Radius)
+	}
+	return int(cap)
+}
+
+// PickPiratePattern は (x, y) で重なる PirateZone の Patterns から
+// 等確率で 1 つを抽選する。ゾーン外なら ok=false。
+func (w *World) PickPiratePattern(x, y float64, rng *rand.Rand) (PiratePatternID, bool) {
+	m := w.Containing(x, y)
+	if m == nil {
+		return 0, false
+	}
+	var pool []PiratePatternID
+	for i := range m.PirateZones {
+		z := &m.PirateZones[i]
+		d := math.Hypot(x-z.CX, y-z.CY)
+		if d >= z.Radius {
+			continue
+		}
+		pool = append(pool, z.Patterns...)
+	}
+	if len(pool) == 0 {
+		return 0, false
+	}
+	return pool[rng.Intn(len(pool))], true
 }
 
 // PickResource は (x, y) を含む FullMap のゾーン群から、

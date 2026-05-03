@@ -346,6 +346,27 @@ func (p *Player) Shoot() []Bullet {
 	return out
 }
 
+// AddSparePart はスペアパーツインベントリに id を qty 個加算する。
+// 積載超過になる場合は false を返し、加算しない（拾い直し / 拒絶を呼び出し側で扱う）。
+// qty が非正の場合は減算となるため重量チェックを行わない。
+func (p *Player) AddSparePart(id PartID, qty int) bool {
+	if p.PartsInventory == nil {
+		p.PartsInventory = make(map[PartID]int)
+	}
+	if qty > 0 {
+		d := PartDefByID(id)
+		if d == nil {
+			return false
+		}
+		w := d.Weight * float64(qty)
+		if !p.CanAddWeight(w) {
+			return false
+		}
+	}
+	p.PartsInventory[id] += qty
+	return true
+}
+
 // HasWarpDrive は搭載パーツに Warp パーツが含まれているかを返す。
 // 未搭載なら恒星マップは表示のみ、ワープ確定は不可となる。
 func (p *Player) HasWarpDrive() bool {

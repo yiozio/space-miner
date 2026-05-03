@@ -6,7 +6,8 @@
       "Bash(go vet *)",
       "Bash(go build *)",
       "Bash(gofmt -l .)",
-      "Bash(grep -n \"^}$\\\\|^func \" /Users/yiozio/work/go/space-miner/internal/scene/exploration.go)"
+      "Bash(grep -n \"^}$\\\\|^func \" /Users/yiozio/work/go/space-miner/internal/scene/exploration.go)",
+      "Bash(grep *)"
     ]
   }
 }

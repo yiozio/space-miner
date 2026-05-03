@@ -88,6 +88,13 @@ func DefaultWorld() *World {
 						},
 					},
 				},
+				PirateZones: []PirateZone{
+					// 起点 FullMap には弱めの Scout 出没エリアを 1 つだけ
+					{
+						CX: auroraX - 18000, CY: auroraY - 14000, Radius: 6000, MaxPirates: 2,
+						Patterns: []PiratePatternID{PiratePatternScout},
+					},
+				},
 			},
 			{
 				Name: "Tinker",
@@ -120,6 +127,13 @@ func DefaultWorld() *World {
 						},
 					},
 				},
+				PirateZones: []PirateZone{
+					// 衛星周辺は Scout + Brawler 混在
+					{
+						CX: tinkerX + 11000, CY: tinkerY + 9000, Radius: 7000, MaxPirates: 3,
+						Patterns: []PiratePatternID{PiratePatternScout, PiratePatternBrawler},
+					},
+				},
 			},
 			{
 				Name: "Helix",
@@ -149,6 +163,13 @@ func DefaultWorld() *World {
 							{Resource: ResourceBronze, Weight: 2},
 							{Resource: ResourceIron, Weight: 1},
 						},
+					},
+				},
+				PirateZones: []PirateZone{
+					// 終盤宙域: Brawler + Cruiser
+					{
+						CX: helixX, CY: helixY + 14000, Radius: 8000, MaxPirates: 4,
+						Patterns: []PiratePatternID{PiratePatternBrawler, PiratePatternCruiser},
 					},
 				},
 			},

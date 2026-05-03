@@ -55,6 +55,10 @@ type Exploration struct {
 	autoAimDmgAcc  float64
 	autoAimBeams   []autoAimBeam // 当該フレームに発射中のビーム（描画用）
 
+	// 海賊
+	pirates        []*entity.Pirate
+	pirateSpawnRng *rand.Rand
+
 	// プレイ時間（秒）。ロード時は保存値から再開、新規ゲームは 0。
 	// 60fps 想定で毎フレーム 1/60 ずつ加算する。
 	playtime float64
@@ -103,6 +107,7 @@ func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 		starfield:      newStarfield(1),
 		world:          entity.DefaultWorld(),
 		spawnRng:       rand.New(rand.NewSource(2)),
+		pirateSpawnRng: rand.New(rand.NewSource(3)),
 		autoAimGridIdx: -1,
 		playtime:       playtime,
 	}
@@ -191,6 +196,34 @@ func (e *Exploration) applyAutoAim() {
 	}
 }
 
+// trySpawnPirate は現フレームの海賊出現上限に達していなければ、
+// ミニマップ外のリング上で PirateZone 内の点を選んで海賊を 1 体追加する。
+func (e *Exploration) trySpawnPirate() {
+	cap := e.world.PirateSpawnCap(e.player.X, e.player.Y)
+	if len(e.pirates) >= cap {
+		return
+	}
+	for tries := 0; tries < 8; tries++ {
+		ang := e.pirateSpawnRng.Float64() * math.Pi * 2
+		dist := asteroidSpawnRingMin + e.pirateSpawnRng.Float64()*(asteroidSpawnRingMax-asteroidSpawnRingMin)
+		x := e.player.X + math.Cos(ang)*dist
+		y := e.player.Y + math.Sin(ang)*dist
+		if !e.world.InBounds(x, y) {
+			continue
+		}
+		patternID, ok := e.world.PickPiratePattern(x, y, e.pirateSpawnRng)
+		if !ok {
+			continue
+		}
+		def := entity.PiratePatternByID(patternID)
+		if def == nil {
+			continue
+		}
+		e.pirates = append(e.pirates, entity.NewPirate(x, y, e.player.X, e.player.Y, def))
+		return
+	}
+}
+
 // trySpawnAsteroid は現フレームの生成上限に達していなければ、
 // ミニマップ外のリング上で全体マップ内・ゾーン内の点を選んで小惑星を 1 つ追加する。
 // 生成位置で重なるゾーンの素材重みを合算して 1 素材を抽選する。
@@ -271,10 +304,19 @@ func (e *Exploration) Update(d Director) error {
 
 	// ゾーンに応じた小惑星のスポーン（フレームあたり最大 1 体）
 	e.trySpawnAsteroid()
+	e.trySpawnPirate()
 
 	// 小惑星の浮遊・自転
 	for _, a := range e.asteroids {
 		a.Update()
+	}
+
+	// 海賊 AI: 各機が旋回・追跡・発射し、敵弾を弾リストに合流させる
+	for _, pr := range e.pirates {
+		bullets := pr.Update(e.player.X, e.player.Y)
+		if len(bullets) > 0 {
+			e.bullets = append(e.bullets, bullets...)
+		}
 	}
 
 	// 自機 ⇄ 小惑星の衝突解決（押し戻し＋反射＋ダメージ）
@@ -328,7 +370,7 @@ func (e *Exploration) Update(d Director) error {
 	e.bullets = e.bullets[:nb]
 
 	// 弾 vs 小惑星（衝突したら弾を消し、破壊グリッドからピックアップを生成）
-	// 命中時はその小惑星を AutoAim のターゲットに設定する。
+	// 命中時はその小惑星を AutoAim のターゲットに設定する。プレイヤー弾と敵弾の両方が小惑星を割る。
 	for i := len(e.bullets) - 1; i >= 0; i-- {
 		b := &e.bullets[i]
 		for _, a := range e.asteroids {
@@ -337,15 +379,26 @@ func (e *Exploration) Update(d Director) error {
 				continue
 			}
 			e.pickups = append(e.pickups, drops...)
+			hostile := b.Hostile
 			e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
-			if e.autoAimTarget != a {
+			// AutoAim 対象更新はプレイヤー弾の命中時のみ
+			if !hostile && e.autoAimTarget != a {
 				e.autoAimTarget = a
-				e.autoAimGridIdx = -1 // 次フレームで最寄グリッドを選び直す
+				e.autoAimGridIdx = -1
 				e.autoAimDmgAcc = 0
 			}
 			break
 		}
 	}
+
+	// プレイヤー弾 vs 海賊
+	e.handlePlayerBulletsHitPirates()
+
+	// 敵弾 vs 自機
+	e.handleHostileBulletsHitPlayer()
+
+	// 撃破された海賊を除去し、credits とパーツを落とす（カル距離超過の海賊も除去）
+	e.cullPiratesAndDrop()
 
 	// AutoAim パーツによる継続ダメージ（ビームの描画情報も生成）
 	e.applyAutoAim()
@@ -386,7 +439,14 @@ func (e *Exploration) Update(d Director) error {
 	for i := range e.pickups {
 		p := &e.pickups[i]
 		if p.Update(e.player.X, e.player.Y) {
-			if e.player.AddResource(p.Resource, 1) {
+			accepted := false
+			switch p.Kind {
+			case entity.PickupResource:
+				accepted = e.player.AddResource(p.Resource, 1)
+			case entity.PickupPart:
+				accepted = e.player.AddSparePart(p.PartID, 1)
+			}
+			if accepted {
 				continue
 			}
 			dx := p.X - e.player.X
@@ -517,6 +577,11 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		a.Draw(dst, a.X-e.cameraX+cx, a.Y-e.cameraY+cy)
 	}
 
+	// 海賊（赤アクセントの船体 + 識別リング）
+	for _, pr := range e.pirates {
+		pr.DrawAt(dst, pr.X-e.cameraX+cx, pr.Y-e.cameraY+cy, theme)
+	}
+
 	// ピックアップ
 	for i := range e.pickups {
 		p := &e.pickups[i]
@@ -616,6 +681,18 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		c := a.Grids[0].Resource.Info().Color
 		vector.DrawFilledRect(dst, nx-1, ny-1, 2, 2, c, false)
 	}
+	// 海賊（赤い小点）
+	for _, pr := range e.pirates {
+		dx := (pr.X - e.cameraX) * minimapScale
+		dy := (pr.Y - e.cameraY) * minimapScale
+		nx := mx + miniW/2 + float32(dx)
+		ny := my + miniH/2 + float32(dy)
+		if nx < mx || nx > mx+miniW || ny < my || ny > my+miniH {
+			continue
+		}
+		vector.DrawFilledRect(dst, nx-1, ny-1, 3, 3, color.NRGBA{0xff, 0x60, 0x40, 0xff}, false)
+	}
+
 	// ステーション（小さな四角で目立たせる）
 	for _, s := range e.stations {
 		dx := (s.X - e.cameraX) * minimapScale
@@ -673,10 +750,11 @@ func (e *Exploration) tickWarp() {
 			e.player.VX = 0
 			e.player.VY = 0
 			e.lastMap = dest
-			// ワープ前の局所状態（小惑星・ピックアップ・弾・自動照準）は持ち越さない
+			// ワープ前の局所状態（小惑星・ピックアップ・弾・海賊・自動照準）は持ち越さない
 			e.asteroids = e.asteroids[:0]
 			e.pickups = e.pickups[:0]
 			e.bullets = e.bullets[:0]
+			e.pirates = e.pirates[:0]
 			e.autoAimTarget = nil
 			e.autoAimGridIdx = -1
 			e.autoAimDmgAcc = 0
@@ -746,4 +824,88 @@ func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
 	vector.DrawFilledCircle(dst, sx, sy, r, fill, true)
 	// 輪郭: 不透明
 	vector.StrokeCircle(dst, sx, sy, r, 1.5, body.Color, true)
+}
+
+// 海賊の判定半径（弾命中・カル距離計算）
+const pirateHitRadius = 30.0
+
+// handlePlayerBulletsHitPirates はプレイヤー弾と海賊機体の円-点判定を行い、
+// 命中した弾を消費して該当海賊にダメージを与える（敵弾・既消滅弾はスキップ）。
+func (e *Exploration) handlePlayerBulletsHitPirates() {
+	for i := len(e.bullets) - 1; i >= 0; i-- {
+		b := &e.bullets[i]
+		if b.Hostile {
+			continue
+		}
+		for _, pr := range e.pirates {
+			if pr.HP <= 0 {
+				continue
+			}
+			if math.Hypot(b.X-pr.X, b.Y-pr.Y) > pirateHitRadius {
+				continue
+			}
+			pr.TakeHit(b.Damage)
+			e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
+			break
+		}
+	}
+}
+
+// handleHostileBulletsHitPlayer は敵弾とプレイヤー機体の円-点判定を行い、
+// 命中した弾を消費してダメージを与える。プレイヤーの円判定は GridSize（パーツ 1 個分）。
+func (e *Exploration) handleHostileBulletsHitPlayer() {
+	const playerHitRadius = float64(entity.GridSize)
+	for i := len(e.bullets) - 1; i >= 0; i-- {
+		b := &e.bullets[i]
+		if !b.Hostile {
+			continue
+		}
+		if math.Hypot(b.X-e.player.X, b.Y-e.player.Y) > playerHitRadius {
+			continue
+		}
+		e.player.Damage(b.Damage)
+		e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
+	}
+}
+
+// cullPiratesAndDrop は撃破された海賊・カル距離超過の海賊を除去する。
+// 撃破時は credits を加算し、PartDropRate に従って稀にパーツ pickup を生成する。
+func (e *Exploration) cullPiratesAndDrop() {
+	n := 0
+	for _, pr := range e.pirates {
+		if pr.HP <= 0 {
+			e.dropPirateLoot(pr)
+			continue
+		}
+		if math.Hypot(pr.X-e.player.X, pr.Y-e.player.Y) > asteroidCullDist {
+			continue
+		}
+		e.pirates[n] = pr
+		n++
+	}
+	e.pirates = e.pirates[:n]
+}
+
+// dropPirateLoot は撃破海賊からのドロップを生成する。
+// credits は自機に直接加算し、稀にパーツ pickup を物理空間に落とす。
+func (e *Exploration) dropPirateLoot(pr *entity.Pirate) {
+	pat := pr.Pattern
+	if pat == nil {
+		return
+	}
+	min := pat.DropCreditsMin
+	max := pat.DropCreditsMax
+	if max < min {
+		max = min
+	}
+	credits := min
+	if max > min {
+		credits += e.spawnRng.Intn(max - min + 1)
+	}
+	e.player.Credits += credits
+
+	if len(pat.PartDrops) > 0 && e.spawnRng.Float64() < pat.PartDropRate {
+		id := pat.PartDrops[e.spawnRng.Intn(len(pat.PartDrops))]
+		e.pickups = append(e.pickups, entity.NewPartPickup(pr.X, pr.Y, id))
+	}
 }

@@ -107,6 +107,23 @@ func (w *WorldMapView) Draw(dst *ebiten.Image, d Director) {
 		drawZoneSwatches(dst, zsx, zsy+float32(lh)/2+4, z)
 	}
 
+	// 海賊出没エリア（赤い円 + ラベル）
+	pirateColor := color.NRGBA{0xff, 0x60, 0x40, 0xff}
+	for i := range w.fmap.PirateZones {
+		pz := &w.fmap.PirateZones[i]
+		psx, psy := toScreen(pz.CX, pz.CY)
+		pr := float32(pz.Radius * scale)
+		// 危険を示す赤い破線風（連続したストロークの薄い円 + 中央に強い円）
+		dim := pirateColor
+		dim.A = 90
+		vector.DrawFilledCircle(dst, psx, psy, pr, dim, true)
+		vector.StrokeCircle(dst, psx, psy, pr, 1.5, pirateColor, true)
+		// ラベル
+		label := "HOSTILE"
+		lw, lh := ui.MeasureText(label, 1.2)
+		ui.DrawText(dst, label, float64(psx)-lw/2, float64(psy)-lh/2, 1.2, pirateColor)
+	}
+
 	// ステーション（対象 FullMap 内のもののみ）
 	for _, s := range w.stations {
 		if !w.fmap.Contains(s.X, s.Y) {
