@@ -192,3 +192,50 @@ func (s *Ship) drawAfterburners(dst *ebiten.Image, sx, sy float64, theme *ui.The
 		}
 	}
 }
+
+// DrawShieldOutline は搭載パーツ群の外周（隣接パーツのない面）をテーマライン色で描画する。
+// グリッドが隣接している面はスキップし、シルエットの輪郭だけが残る。
+// シールド HP が 1 以上のときに毎フレーム呼び出す想定。
+func (s *Ship) DrawShieldOutline(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
+	if len(s.Parts) == 0 {
+		return
+	}
+	g := float64(GridSize)
+	half := g / 2
+
+	occupied := make(map[[2]int]bool, len(s.Parts))
+	for _, p := range s.Parts {
+		occupied[[2]int{p.GX, p.GY}] = true
+	}
+
+	// 船体描画と同じ R(angle + π/2) ローカル → ワールド変換
+	sSin, sCos := math.Sin(s.Angle), math.Cos(s.Angle)
+	rotate := func(lx, ly float64) (float32, float32) {
+		wx := -sSin*lx - sCos*ly
+		wy := sCos*lx - sSin*ly
+		return float32(sx + wx), float32(sy + wy)
+	}
+
+	type edge struct {
+		dx, dy         int
+		ax, ay, bx, by float64
+	}
+	for _, p := range s.Parts {
+		lx := float64(p.GX) * g
+		ly := float64(p.GY) * g
+		edges := [4]edge{
+			{0, -1, lx - half, ly - half, lx + half, ly - half}, // top
+			{1, 0, lx + half, ly - half, lx + half, ly + half},  // right
+			{0, 1, lx - half, ly + half, lx + half, ly + half},  // bottom
+			{-1, 0, lx - half, ly - half, lx - half, ly + half}, // left
+		}
+		for _, ed := range edges {
+			if occupied[[2]int{p.GX + ed.dx, p.GY + ed.dy}] {
+				continue
+			}
+			x1, y1 := rotate(ed.ax, ed.ay)
+			x2, y2 := rotate(ed.bx, ed.by)
+			vector.StrokeLine(dst, x1, y1, x2, y2, 1.5, theme.Line, false)
+		}
+	}
+}

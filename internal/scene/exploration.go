@@ -462,6 +462,10 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 	psy := e.player.Y - e.cameraY + cy
 	if e.player.InvulnTimer == 0 || (e.player.InvulnTimer/4)%2 == 0 {
 		e.player.DrawAt(dst, psx, psy, theme)
+		// シールドが 1 以上なら、外周（隣接面以外）を点滅描画
+		if e.player.ShieldHP > 0 {
+			e.player.Ship.DrawShieldOutline(dst, psx, psy, theme)
+		}
 	}
 
 	// ドック近接プロンプト
