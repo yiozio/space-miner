@@ -10,8 +10,9 @@ const (
 	playerRotateSpeed    = 0.06
 	playerOverspeedDecel = 0.10 // 通常最高速度を超えた分を毎フレームこれだけ削る（スラスタ数倍でスケール）
 	PlayerHPDefault      = 100  // 基本 HP（Armor の ArmorHP 合算で MaxHP が増える）
-	PlayerCreditsDefault = 100  // 初期所持クレジット
-	PlayerInvulnFrames   = 30   // 被弾後の無敵フレーム
+	// PlayerCreditsDefault = 100  // 初期所持クレジット
+	PlayerCreditsDefault = 1000
+	PlayerInvulnFrames   = 30 // 被弾後の無敵フレーム
 
 	// シールド回復: 最後の被弾から ShieldRegenDelay フレーム経過後に
 	// 毎フレーム ShieldRegenPerFrame ずつ回復する。

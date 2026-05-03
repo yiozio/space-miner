@@ -113,6 +113,70 @@ func (a *Asteroid) Hit(bx, by float64, damage int) (absorbed bool, pickups []Pic
 // Empty は全グリッドが破壊された状態か返す。
 func (a *Asteroid) Empty() bool { return len(a.Grids) == 0 }
 
+// GridWorldPos は idx 番目のグリッド中心のワールド座標を返す。
+// idx が範囲外なら ok=false。
+func (a *Asteroid) GridWorldPos(idx int) (x, y float64, ok bool) {
+	if idx < 0 || idx >= len(a.Grids) {
+		return 0, 0, false
+	}
+	gr := a.Grids[idx]
+	g := float64(GridSize)
+	sin, cos := math.Sin(a.Angle), math.Cos(a.Angle)
+	lcx := float64(gr.GX) * g
+	lcy := float64(gr.GY) * g
+	wox := cos*lcx - sin*lcy
+	woy := sin*lcx + cos*lcy
+	return a.X + wox, a.Y + woy, true
+}
+
+// NearestGridIdx は (x, y) に最も近いグリッドのインデックスを返す。
+// グリッドが無ければ -1。
+func (a *Asteroid) NearestGridIdx(x, y float64) int {
+	best := -1
+	bestD := math.Inf(1)
+	g := float64(GridSize)
+	sin, cos := math.Sin(a.Angle), math.Cos(a.Angle)
+	for i, gr := range a.Grids {
+		lcx := float64(gr.GX) * g
+		lcy := float64(gr.GY) * g
+		wox := cos*lcx - sin*lcy
+		woy := sin*lcx + cos*lcy
+		gcx := a.X + wox
+		gcy := a.Y + woy
+		d := math.Hypot(gcx-x, gcy-y)
+		if d < bestD {
+			bestD = d
+			best = i
+		}
+	}
+	return best
+}
+
+// HitGrid は idx 番目のグリッドに damage を与える。
+// 破壊されたら destroyed=true、その位置に発生した Pickup を返す。
+// idx が無効な場合 ok=false。
+func (a *Asteroid) HitGrid(idx, damage int) (destroyed bool, pickup Pickup, ok bool) {
+	if idx < 0 || idx >= len(a.Grids) {
+		return false, Pickup{}, false
+	}
+	gr := &a.Grids[idx]
+	gr.HP -= damage
+	if gr.HP > 0 {
+		return false, Pickup{}, true
+	}
+	g := float64(GridSize)
+	fSin, fCos := math.Sin(a.Angle), math.Cos(a.Angle)
+	cx := float64(gr.GX) * g
+	cy := float64(gr.GY) * g
+	wcx := fCos*cx - fSin*cy
+	wcy := fSin*cx + fCos*cy
+	pk := NewPickup(a.X+wcx, a.Y+wcy, gr.Resource)
+	pk.VX = a.VX
+	pk.VY = a.VY
+	a.Grids = append(a.Grids[:idx], a.Grids[idx+1:]...)
+	return true, pk, true
+}
+
 // Draw は (sx, sy) を小惑星中心としてグリッド群を描画する。
 // 各グリッドは資源色で輪郭描画し、自転に合わせて 4 頂点を回転させる。
 // HP が減るほどアルファが下がり「もろさ」を表現する。

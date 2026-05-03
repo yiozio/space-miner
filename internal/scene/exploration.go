@@ -45,6 +45,19 @@ type Exploration struct {
 	world      *entity.World
 	spawnRng   *rand.Rand
 	lastMap    *entity.FullMap // 最後に入った FullMap。区画外でも保持し、全体マップ表示の対象とする
+
+	// AutoAim 制御: 最後に弾が当たった小惑星をターゲットとし、
+	// 各 AutoAim パーツが射程内なら毎フレーム DPS を合算してダメージを与える。
+	autoAimTarget  *entity.Asteroid
+	autoAimGridIdx int
+	autoAimDmgAcc  float64
+	autoAimBeams   []autoAimBeam // 当該フレームに発射中のビーム（描画用）
+}
+
+// autoAimBeam は1パーツ → 対象グリッドのビーム描画情報。
+type autoAimBeam struct {
+	fromX, fromY float64
+	toX, toY     float64
 }
 
 // NewExploration は新しい探索シーンを生成する。
@@ -52,16 +65,92 @@ type Exploration struct {
 // World 定義データは entity/data_world.go を参照。
 func NewExploration() *Exploration {
 	e := &Exploration{
-		player:    entity.NewPlayerPebble(),
-		starfield: newStarfield(1),
-		world:     entity.DefaultWorld(),
-		spawnRng:  rand.New(rand.NewSource(2)),
+		player:         entity.NewPlayerPebble(),
+		starfield:      newStarfield(1),
+		world:          entity.DefaultWorld(),
+		spawnRng:       rand.New(rand.NewSource(2)),
+		autoAimGridIdx: -1,
 	}
 	// 起点近くに 1 基の宇宙ステーションを配置（このステーションが起点 FullMap の中心）
 	e.stations = append(e.stations, entity.NewStation(entity.DefaultStationX, entity.DefaultStationY))
 	// 開始時点でいる FullMap を記録（通常は起点 FullMap）
 	e.lastMap = e.world.Containing(e.player.X, e.player.Y)
 	return e
+}
+
+// applyAutoAim は autoAimTarget に対して AutoAim パーツの継続ダメージを 1 フレーム分適用する。
+// 各パーツのワールド位置から対象グリッドまで AutoAimRange 以内ならビームを発射し、
+// 全パーツの DPS を合算して dmgAcc に蓄積、>= 1 で整数ダメージとしてグリッドに与える。
+// グリッドが破壊されたら同小惑星の最寄グリッドに再ターゲットする。
+// 描画用に autoAimBeams を毎フレーム書き換える。
+func (e *Exploration) applyAutoAim() {
+	e.autoAimBeams = e.autoAimBeams[:0]
+	a := e.autoAimTarget
+	if a == nil || len(a.Grids) == 0 {
+		e.autoAimTarget = nil
+		return
+	}
+	// 対象グリッドの選択（無効なら最寄を選ぶ）
+	if e.autoAimGridIdx < 0 || e.autoAimGridIdx >= len(a.Grids) {
+		e.autoAimGridIdx = a.NearestGridIdx(e.player.X, e.player.Y)
+		if e.autoAimGridIdx < 0 {
+			e.autoAimTarget = nil
+			return
+		}
+	}
+	gx, gy, ok := a.GridWorldPos(e.autoAimGridIdx)
+	if !ok {
+		e.autoAimTarget = nil
+		return
+	}
+
+	// 各 AutoAim パーツのワールド位置と射程チェック
+	p := e.player
+	g := float64(entity.GridSize)
+	sSin, sCos := math.Sin(p.Angle), math.Cos(p.Angle)
+	dpsSum := 0.0
+	for _, part := range p.Parts {
+		d := part.Def()
+		if d == nil || d.Kind != entity.PartAutoAim {
+			continue
+		}
+		lx := float64(part.GX) * g
+		ly := float64(part.GY) * g
+		// 船体描画と同じ R(angle + π/2) ローカル → ワールド変換
+		px := p.X + (-sSin*lx - sCos*ly)
+		py := p.Y + (sCos*lx - sSin*ly)
+		if math.Hypot(gx-px, gy-py) > d.AutoAimRange {
+			continue
+		}
+		dpsSum += d.AutoAimDPS
+		e.autoAimBeams = append(e.autoAimBeams, autoAimBeam{
+			fromX: px, fromY: py, toX: gx, toY: gy,
+		})
+	}
+	if dpsSum <= 0 {
+		return
+	}
+
+	e.autoAimDmgAcc += dpsSum / 60.0
+	if e.autoAimDmgAcc < 1 {
+		return
+	}
+	dmg := int(e.autoAimDmgAcc)
+	e.autoAimDmgAcc -= float64(dmg)
+	destroyed, pk, hitOk := a.HitGrid(e.autoAimGridIdx, dmg)
+	if !hitOk {
+		e.autoAimGridIdx = -1
+		return
+	}
+	if destroyed {
+		e.pickups = append(e.pickups, pk)
+		if len(a.Grids) == 0 {
+			e.autoAimTarget = nil
+			e.autoAimGridIdx = -1
+			return
+		}
+		e.autoAimGridIdx = a.NearestGridIdx(e.player.X, e.player.Y)
+	}
 }
 
 // trySpawnAsteroid は現フレームの生成上限に達していなければ、
@@ -164,6 +253,7 @@ func (e *Exploration) Update(d Director) error {
 	e.bullets = e.bullets[:nb]
 
 	// 弾 vs 小惑星（衝突したら弾を消し、破壊グリッドからピックアップを生成）
+	// 命中時はその小惑星を AutoAim のターゲットに設定する。
 	for i := len(e.bullets) - 1; i >= 0; i-- {
 		b := &e.bullets[i]
 		for _, a := range e.asteroids {
@@ -173,9 +263,17 @@ func (e *Exploration) Update(d Director) error {
 			}
 			e.pickups = append(e.pickups, drops...)
 			e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
+			if e.autoAimTarget != a {
+				e.autoAimTarget = a
+				e.autoAimGridIdx = -1 // 次フレームで最寄グリッドを選び直す
+				e.autoAimDmgAcc = 0
+			}
 			break
 		}
 	}
+
+	// AutoAim パーツによる継続ダメージ（ビームの描画情報も生成）
+	e.applyAutoAim()
 
 	// 空・遠方の小惑星を除去（遠方は再生成に任せ、ミニマップ外で滞留させない）
 	na := 0
@@ -190,6 +288,22 @@ func (e *Exploration) Update(d Director) error {
 		na++
 	}
 	e.asteroids = e.asteroids[:na]
+
+	// AutoAim ターゲットがリストから消えていたらクリア（破壊済 or カル済）
+	if e.autoAimTarget != nil {
+		found := false
+		for _, a := range e.asteroids {
+			if a == e.autoAimTarget {
+				found = true
+				break
+			}
+		}
+		if !found {
+			e.autoAimTarget = nil
+			e.autoAimGridIdx = -1
+			e.autoAimDmgAcc = 0
+		}
+	}
 
 	// ピックアップの更新（吸引・回収・寿命切れ）
 	// 積載超過なら回収を拒否し、自機から外側へ少し弾いて吸引ループを抜ける。
@@ -331,6 +445,16 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 	for i := range e.bullets {
 		b := &e.bullets[i]
 		b.Draw(dst, b.X-e.cameraX+cx, b.Y-e.cameraY+cy, e.player.VX, e.player.VY, theme)
+	}
+
+	// AutoAim ビーム（パーツ → 対象グリッド）
+	beamColor := color.NRGBA{0xff, 0xc0, 0x40, 0xff}
+	for _, b := range e.autoAimBeams {
+		x1 := float32(b.fromX - e.cameraX + cx)
+		y1 := float32(b.fromY - e.cameraY + cy)
+		x2 := float32(b.toX - e.cameraX + cx)
+		y2 := float32(b.toY - e.cameraY + cy)
+		vector.StrokeLine(dst, x1, y1, x2, y2, 1.5, beamColor, false)
 	}
 
 	// プレイヤー（被弾無敵中は数フレームおきに点滅）
