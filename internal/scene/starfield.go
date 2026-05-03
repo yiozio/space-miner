@@ -46,8 +46,8 @@ func newStarLayer(rng *rand.Rand, count int, tileSize, parallax, minBright, maxB
 // 共有パララックス係数。
 // 惑星バックドロップ（exploration.go の drawCelestialBackdrop）も同じ値を使う。
 const (
-	farStarParallax  = 0.0  // 最も遠い星: 動かない
-	nearStarParallax = 0.10 // 近景星 + 惑星バックドロップ
+	farStarParallax    = 0.0  // 最も遠い星: 動かない
+	nearStarParallax   = 0.10 // 近景星 + 惑星バックドロップ
 	nearPlanetParallax = 0.35 // 現在居るマップの惑星/衛星
 )
 

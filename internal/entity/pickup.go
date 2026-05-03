@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"image/color"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -16,12 +17,22 @@ const (
 	pickupDrawSize      = 5
 )
 
-// Pickup は破壊されたグリッドから落ちた回収可能な資源。
+// PickupKind は Pickup の中身の種別。
+type PickupKind int
+
+const (
+	PickupResource PickupKind = iota // Resource フィールドが有効
+	PickupPart                       // PartID フィールドが有効
+)
+
+// Pickup は回収可能なドロップ（資源 / パーツ）。
 // プレイヤー機の半径に入ると吸い寄せられ、接触で取得される。
 type Pickup struct {
 	X, Y     float64
 	VX, VY   float64
-	Resource ResourceType
+	Kind     PickupKind
+	Resource ResourceType // Kind == PickupResource のとき有効
+	PartID   PartID       // Kind == PickupPart のとき有効
 	Life     int
 }
 
@@ -30,8 +41,20 @@ func NewPickup(x, y float64, r ResourceType) Pickup {
 	return Pickup{
 		X:        x,
 		Y:        y,
+		Kind:     PickupResource,
 		Resource: r,
 		Life:     pickupLifeFrames,
+	}
+}
+
+// NewPartPickup は座標 (x, y) にパーツドロップを生成する（海賊撃破時の稀ドロップ用）。
+func NewPartPickup(x, y float64, id PartID) Pickup {
+	return Pickup{
+		X:      x,
+		Y:      y,
+		Kind:   PickupPart,
+		PartID: id,
+		Life:   pickupLifeFrames,
 	}
 }
 
@@ -57,9 +80,16 @@ func (p *Pickup) Update(playerX, playerY float64) (collected bool) {
 	return false
 }
 
-// Draw は資源色のひし形マーカーを (sx, sy) に描く。
+// Draw は (sx, sy) を中心にひし形マーカーを描く。
+// 資源は資源色、パーツはやや明るい黄色で描画して区別する。
 func (p *Pickup) Draw(dst *ebiten.Image, sx, sy float64) {
-	c := p.Resource.Info().Color
+	var c color.NRGBA
+	switch p.Kind {
+	case PickupPart:
+		c = color.NRGBA{0xff, 0xe0, 0x60, 0xff}
+	default:
+		c = p.Resource.Info().Color
+	}
 	s := float32(pickupDrawSize)
 	x, y := float32(sx), float32(sy)
 	vector.StrokeLine(dst, x-s, y, x, y-s, 1, c, false)
