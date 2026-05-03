@@ -9,16 +9,23 @@ import (
 const (
 	playerRotateSpeed    = 0.06
 	playerOverspeedDecel = 0.10 // 通常最高速度を超えた分を毎フレームこれだけ削る（スラスタ数倍でスケール）
-	PlayerHPDefault      = 100  // 初期 HP / 最大 HP
+	PlayerHPDefault      = 100  // 基本 HP（Armor の ArmorHP 合算で MaxHP が増える）
 	PlayerCreditsDefault = 100  // 初期所持クレジット
 	PlayerInvulnFrames   = 30   // 被弾後の無敵フレーム
+
+	// シールド回復: 最後の被弾から ShieldRegenDelay フレーム経過後に
+	// 毎フレーム ShieldRegenPerFrame ずつ回復する。
+	ShieldRegenDelay    = 120 // 2 秒（60fps）
+	ShieldRegenPerFrame = 0.5 // 30 HP/秒
 )
 
 // Player はプレイヤー機。Ship に操作・発射・インベントリ・HP・燃料・クレジットを加えたもの。
 type Player struct {
 	Ship
 	HP             int
-	MaxHP          int
+	MaxHP          int // 基本 HP + 全 Armor の ArmorHP 合算
+	ShieldHP       int // 現在のシールド HP
+	MaxShieldHP    int // 全 Shield パーツの ShieldHP 合算
 	Fuel           float64
 	MaxFuel        float64
 	Credits        int
@@ -28,6 +35,9 @@ type Player struct {
 	PartsInventory map[PartID]int       // 船に未取付のスペアパーツ
 	// 動的なスピード上限。ブースト時に boost 上限へ瞬時上昇し、解除後は徐々に通常上限へ減衰する。
 	speedCap float64
+	// シールド回復制御。
+	noDamageFrames int     // 最後の被弾からの経過フレーム
+	shieldRegenAcc float64 // 1 を超えるごとに ShieldHP を 1 上げる
 }
 
 // NewPlayerPebble は初期機体「Pebble」のプレイヤーを生成する。
@@ -49,31 +59,53 @@ func NewPlayerPebble() *Player {
 		Inventory:      make(map[ResourceType]int),
 		PartsInventory: make(map[PartID]int),
 	}
-	p.recomputeMaxFuel()
+	p.recomputeStats()
+	// 初期状態は HP/シールドを満タンに
+	p.HP = p.MaxHP
+	p.ShieldHP = p.MaxShieldHP
 	return p
 }
 
-// recomputeMaxFuel は搭載 Fuel パーツの FuelCapacity を合算して MaxFuel を更新する。
-// Fuel パーツが 0 個なら MaxFuel = 0。現在の Fuel が新しい MaxFuel を超える場合はクランプする。
-func (p *Player) recomputeMaxFuel() {
-	total := 0.0
+// recomputeStats は搭載パーツから派生するステータス（MaxHP / MaxShieldHP / MaxFuel）を再計算し、
+// 現在値を新しい上限にクランプする。
+// Armor 0 個 → 基本 HP のみ、Shield 0 個 → MaxShieldHP=0、Fuel 0 個 → MaxFuel=0。
+func (p *Player) recomputeStats() {
+	armor := 0
+	shield := 0
+	fuel := 0.0
 	for _, part := range p.Parts {
 		d := part.Def()
-		if d != nil && d.Kind == PartFuel {
-			total += d.FuelCapacity
+		if d == nil {
+			continue
+		}
+		switch d.Kind {
+		case PartArmor:
+			armor += d.ArmorHP
+		case PartShield:
+			shield += d.ShieldHP
+		case PartFuel:
+			fuel += d.FuelCapacity
 		}
 	}
-	p.MaxFuel = total
+	p.MaxHP = PlayerHPDefault + armor
+	p.MaxShieldHP = shield
+	p.MaxFuel = fuel
+	if p.HP > p.MaxHP {
+		p.HP = p.MaxHP
+	}
+	if p.ShieldHP > p.MaxShieldHP {
+		p.ShieldHP = p.MaxShieldHP
+	}
 	if p.Fuel > p.MaxFuel {
 		p.Fuel = p.MaxFuel
 	}
 }
 
 // OnPartsChanged はエディタなどでパーツ構成が変わった後に呼ぶ。
-// 描画キャッシュ無効化 + ステータス再計算をまとめて行う。
+// 描画キャッシュ無効化 + 派生ステータス再計算をまとめて行う。
 func (p *Player) OnPartsChanged() {
 	p.Ship.InvalidateImage()
-	p.recomputeMaxFuel()
+	p.recomputeStats()
 }
 
 // thrusterAgg は搭載スラスタの集計値。
@@ -190,17 +222,45 @@ func (p *Player) Update() {
 	if p.InvulnTimer > 0 {
 		p.InvulnTimer--
 	}
+
+	// シールド回復: 最後の被弾から ShieldRegenDelay フレーム経過後、毎フレーム回復していく。
+	p.noDamageFrames++
+	if p.noDamageFrames >= ShieldRegenDelay && p.ShieldHP < p.MaxShieldHP {
+		p.shieldRegenAcc += ShieldRegenPerFrame
+		for p.shieldRegenAcc >= 1 && p.ShieldHP < p.MaxShieldHP {
+			p.shieldRegenAcc--
+			p.ShieldHP++
+		}
+		if p.ShieldHP >= p.MaxShieldHP {
+			p.ShieldHP = p.MaxShieldHP
+			p.shieldRegenAcc = 0
+		}
+	}
 }
 
-// Damage は HP を減らし、無敵フレームを設定する。
+// Damage はダメージを適用する。シールドが先に吸収し、超過分が HP を削る。
 // 無敵中、もしくは amount が非正なら何もしない。
+// 被弾するとシールド回復タイマーがリセットされ、ShieldRegenDelay フレーム経過後に再生開始する。
 func (p *Player) Damage(amount int) {
 	if p.InvulnTimer > 0 || amount <= 0 {
 		return
 	}
-	p.HP -= amount
-	if p.HP < 0 {
-		p.HP = 0
+	p.noDamageFrames = 0
+	p.shieldRegenAcc = 0
+	if p.ShieldHP > 0 {
+		if amount <= p.ShieldHP {
+			p.ShieldHP -= amount
+			amount = 0
+		} else {
+			amount -= p.ShieldHP
+			p.ShieldHP = 0
+		}
+	}
+	if amount > 0 {
+		p.HP -= amount
+		if p.HP < 0 {
+			p.HP = 0
+		}
 	}
 	p.InvulnTimer = PlayerInvulnFrames
 }

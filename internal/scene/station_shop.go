@@ -349,6 +349,15 @@ func partStatLines(d *entity.PartDef) []string {
 		return []string{
 			fmt.Sprintf("FUEL CAP %.0f", d.FuelCapacity),
 		}
+	case entity.PartArmor:
+		return []string{
+			fmt.Sprintf("HP +%d", d.ArmorHP),
+		}
+	case entity.PartShield:
+		return []string{
+			fmt.Sprintf("SHIELD HP +%d", d.ShieldHP),
+			"REGEN AFTER 2s NO DMG",
+		}
 	}
 	return nil
 }

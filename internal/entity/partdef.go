@@ -32,6 +32,15 @@ type PartDef struct {
 	// 全 Fuel パーツの FuelCapacity を合算して MaxFuel になる。
 	// Fuel パーツが 0 個なら MaxFuel = 0（ブースト不可）。
 	FuelCapacity float64
+
+	// Armor 用ステータス。Kind != PartArmor の def では未使用。
+	// 全 Armor パーツの ArmorHP を合算して MaxHP に加算される（基本 HP に上乗せ）。
+	ArmorHP int
+
+	// Shield 用ステータス。Kind != PartShield の def では未使用。
+	// 全 Shield パーツの ShieldHP を合算して MaxShieldHP になる。
+	// 被弾はシールドが先に吸収し、無ダメージが一定時間続くと自動回復する。
+	ShieldHP int
 }
 
 var (
