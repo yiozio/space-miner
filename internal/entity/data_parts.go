@@ -40,7 +40,7 @@ func init() {
 		Name: "Cockpit", Desc: "Pilot seat. Required. Provides minimal thrust if no thrusters are installed.",
 		Price:               0,
 		ThrustAccel:         0.05,
-		ThrustMaxSpeed:      3.5,
+		ThrustMaxSpeed:      2,
 		ThrustBoostAccelMul: 1.4,
 		ThrustBoostMaxSpeed: 5.0,
 		ThrustBoostFuelCost: 0.10,

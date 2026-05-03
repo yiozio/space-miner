@@ -372,8 +372,11 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 	ui.DrawText(dst, "MINIMAP", float64(mx)+10, float64(my)+8, 1.2, theme.LineDim)
 	// プレイヤー（中央点）
 	vector.DrawFilledRect(dst, mx+miniW/2-1, my+miniH/2-1, 2, 2, theme.Line, false)
-	// 小惑星
+	// 小惑星（1 個 = 1 素材で構成されているので、先頭グリッドの素材色で描画）
 	for _, a := range e.asteroids {
+		if len(a.Grids) == 0 {
+			continue
+		}
 		dx := (a.X - e.cameraX) * minimapScale
 		dy := (a.Y - e.cameraY) * minimapScale
 		nx := mx + miniW/2 + float32(dx)
@@ -381,7 +384,8 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		if nx < mx || nx > mx+miniW || ny < my || ny > my+miniH {
 			continue
 		}
-		vector.DrawFilledRect(dst, nx-1, ny-1, 2, 2, theme.LineDim, false)
+		c := a.Grids[0].Resource.Info().Color
+		vector.DrawFilledRect(dst, nx-1, ny-1, 2, 2, c, false)
 	}
 	// ステーション（小さな四角で目立たせる）
 	for _, s := range e.stations {
