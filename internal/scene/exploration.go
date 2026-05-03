@@ -192,12 +192,23 @@ func (e *Exploration) Update(d Director) error {
 	e.asteroids = e.asteroids[:na]
 
 	// ピックアップの更新（吸引・回収・寿命切れ）
+	// 積載超過なら回収を拒否し、自機から外側へ少し弾いて吸引ループを抜ける。
 	np := 0
 	for i := range e.pickups {
 		p := &e.pickups[i]
 		if p.Update(e.player.X, e.player.Y) {
-			e.player.AddResource(p.Resource, 1)
-			continue
+			if e.player.AddResource(p.Resource, 1) {
+				continue
+			}
+			dx := p.X - e.player.X
+			dy := p.Y - e.player.Y
+			d := math.Hypot(dx, dy)
+			if d < 0.001 {
+				dx, dy, d = 1, 0, 1
+			}
+			const rejectPush = 6.0
+			p.VX += dx / d * rejectPush
+			p.VY += dy / d * rejectPush
 		}
 		if p.Life > 0 {
 			e.pickups[np] = *p
@@ -346,16 +357,17 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 	if e.player.MaxShieldHP > 0 {
 		statusLine += fmt.Sprintf("   SH %d/%d", e.player.ShieldHP, e.player.MaxShieldHP)
 	}
-	statusLine += fmt.Sprintf("   FUEL %d/%d   CR %d",
+	statusLine += fmt.Sprintf("   FUEL %d/%d   CARGO %.0f/%.0f   CR %d",
 		int(e.player.Fuel), int(e.player.MaxFuel),
+		e.player.CargoLoad(), e.player.MaxCargo,
 		e.player.Credits)
 	ui.DrawText(dst, statusLine, 20, 20, 1.5, theme.Line)
 
 	// インベントリ
 	inv := e.player.Inventory
 	ui.DrawText(dst,
-		fmt.Sprintf("IRON %d   CRYSTAL %d   ICE %d",
-			inv[entity.ResourceIron], inv[entity.ResourceCrystal], inv[entity.ResourceIce]),
+		fmt.Sprintf("IRON %d   BRONZE %d   ICE %d",
+			inv[entity.ResourceIron], inv[entity.ResourceBronze], inv[entity.ResourceIce]),
 		20, 50, 1.5, theme.Line)
 
 	// 速度・座標（デバッグ補助）
