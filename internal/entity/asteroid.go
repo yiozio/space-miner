@@ -75,10 +75,10 @@ func (a *Asteroid) Update() {
 }
 
 // Hit はワールド座標 (bx, by) が小惑星のいずれかのグリッドに含まれていれば
-// そのグリッドに 1 ダメージ与え、絶命したグリッドからは Pickup を返す。
+// そのグリッドに damage 分のダメージを与え、絶命したグリッドからは Pickup を返す。
 // 自転を考慮して、弾をアステロイドのローカル空間に逆回転で変換してから
 // 軸並行のグリッド AABB と比較する。
-func (a *Asteroid) Hit(bx, by float64) (absorbed bool, pickups []Pickup) {
+func (a *Asteroid) Hit(bx, by float64, damage int) (absorbed bool, pickups []Pickup) {
 	g := float64(GridSize)
 	// ワールド → ローカル（中心基準で逆回転）
 	sin, cos := math.Sin(-a.Angle), math.Cos(-a.Angle)
@@ -91,7 +91,7 @@ func (a *Asteroid) Hit(bx, by float64) (absorbed bool, pickups []Pickup) {
 		cx := float64(gr.GX) * g
 		cy := float64(gr.GY) * g
 		if lx >= cx-g/2 && lx < cx+g/2 && ly >= cy-g/2 && ly < cy+g/2 {
-			gr.HP -= bulletDamage
+			gr.HP -= damage
 			if gr.HP <= 0 {
 				// グリッド中心をワールドに戻して Pickup を生成
 				fSin, fCos := math.Sin(a.Angle), math.Cos(a.Angle)

@@ -53,7 +53,7 @@ func (s *Ship) ensureImage(theme *ui.Theme) {
 	for _, p := range s.Parts {
 		x := float32((p.GX - minGX) * GridSize)
 		y := float32((p.GY - minGY) * GridSize)
-		DrawPart(img, p, x, y, float32(GridSize), theme)
+		DrawPart(img, p.Kind(), x, y, float32(GridSize), theme)
 	}
 	s.image = img
 	// コックピット (GX=0, GY=0) のセル中心を回転中心とする
@@ -129,7 +129,7 @@ func (s *Ship) drawAfterburners(dst *ebiten.Image, sx, sy float64, theme *ui.The
 	line := theme.Line
 
 	for _, p := range s.Parts {
-		if p.Kind != PartThruster {
+		if p.Kind() != PartThruster {
 			continue
 		}
 		// パーツの後端中心（ローカル）。ローカル +y が後方。

@@ -23,23 +23,35 @@ const (
 // 7×7 のグリッドにカーソルを置き、左パレットで選んだパーツを設置・取り外しできる。
 // コックピットは原点 (0, 0) に固定（編集対象外）。スペアパーツは Player.PartsInventory。
 type StationEditor struct {
-	player   *entity.Player
-	cursorGX int
-	cursorGY int
-	selected entity.PartKind
+	player    *entity.Player
+	cursorGX  int
+	cursorGY  int
+	palette   []*entity.PartDef // 配置可能な全 def（一覧表示順）
+	paletteIx int               // 現在選択中の palette インデックス
 }
 
 // NewStationEditor は編集シーンを生成する。
-// 既定で在庫のあるパーツを選択、無ければ Gun。
+// 既定で在庫のあるパーツを選択、無ければ palette 先頭。
 func NewStationEditor(p *entity.Player) *StationEditor {
-	se := &StationEditor{player: p, selected: entity.PartGun}
-	for _, kind := range entity.AllPlaceablePartKinds() {
-		if p.PartsInventory[kind] > 0 {
-			se.selected = kind
+	se := &StationEditor{
+		player:  p,
+		palette: entity.AllPlaceablePartDefs(),
+	}
+	for i, def := range se.palette {
+		if p.PartsInventory[def.ID] > 0 {
+			se.paletteIx = i
 			break
 		}
 	}
 	return se
+}
+
+// selectedDef は現在選択中の PartDef を返す。palette が空のときは nil。
+func (se *StationEditor) selectedDef() *entity.PartDef {
+	if len(se.palette) == 0 {
+		return nil
+	}
+	return se.palette[se.paletteIx]
 }
 
 func (se *StationEditor) Update(d Director) error {
@@ -70,15 +82,18 @@ func (se *StationEditor) Update(d Director) error {
 		}
 	}
 
-	// 数字 1-8 でパレット選択
-	placeable := entity.AllPlaceablePartKinds()
-	for i, kind := range placeable {
-		if i >= 9 {
-			break
-		}
+	// 数字 1-9 でパレット先頭9個を直接選択
+	for i := 0; i < 9 && i < len(se.palette); i++ {
 		if inpututil.IsKeyJustPressed(ebiten.Key1 + ebiten.Key(i)) {
-			se.selected = kind
+			se.paletteIx = i
 		}
+	}
+	// Q/E でパレット前後送り（バリアント数が多くても全件アクセス可能）
+	if inpututil.IsKeyJustPressed(ebiten.KeyQ) && len(se.palette) > 0 {
+		se.paletteIx = (se.paletteIx - 1 + len(se.palette)) % len(se.palette)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyE) && len(se.palette) > 0 {
+		se.paletteIx = (se.paletteIx + 1) % len(se.palette)
 	}
 
 	// 配置
@@ -104,18 +119,22 @@ func (se *StationEditor) partAtCursor() int {
 
 // tryPlace はカーソル位置が空かつ選択パーツの在庫があれば設置する。
 func (se *StationEditor) tryPlace() {
-	if se.player.PartsInventory[se.selected] <= 0 {
+	def := se.selectedDef()
+	if def == nil {
+		return
+	}
+	if se.player.PartsInventory[def.ID] <= 0 {
 		return
 	}
 	if se.partAtCursor() >= 0 {
 		return
 	}
 	se.player.Parts = append(se.player.Parts, entity.Part{
-		Kind: se.selected,
-		GX:   se.cursorGX,
-		GY:   se.cursorGY,
+		DefID: def.ID,
+		GX:    se.cursorGX,
+		GY:    se.cursorGY,
 	})
-	se.player.PartsInventory[se.selected]--
+	se.player.PartsInventory[def.ID]--
 	se.player.Ship.InvalidateImage()
 }
 
@@ -127,11 +146,11 @@ func (se *StationEditor) tryRemove() {
 		return
 	}
 	p := se.player.Parts[i]
-	if p.Kind == entity.PartCockpit {
+	if p.Kind() == entity.PartCockpit {
 		return
 	}
 	se.player.Parts = append(se.player.Parts[:i], se.player.Parts[i+1:]...)
-	se.player.PartsInventory[p.Kind]++
+	se.player.PartsInventory[p.DefID]++
 	se.player.Ship.InvalidateImage()
 }
 
@@ -148,7 +167,7 @@ func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
 
 	// レイアウト
 	gridPx := float64(editorGridSize)*editorCellSize + float64(editorGridSize-1)*editorCellGap
-	paletteW := 280.0
+	paletteW := 320.0
 	gap := 60.0
 	totalW := gridPx + gap + paletteW
 	startX := (float64(sw) - totalW) / 2
@@ -161,7 +180,7 @@ func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
 	se.drawCursorInfo(dst, theme, gridStartX, contentY+gridPx+24)
 
 	ui.DrawText(dst,
-		"[ WASD/Arrows: Move    1-8: Select Part    Space: Place    X: Remove    Esc: Back ]",
+		"[ WASD/Arrows: Move    1-9: Quick Select    Q/E: Cycle Palette    Space: Place    X: Remove    Esc: Back ]",
 		20, float64(sh)-30, 1.3, theme.LineDim)
 }
 
@@ -189,7 +208,7 @@ func (se *StationEditor) drawShipGrid(dst *ebiten.Image, theme *ui.Theme, x, y f
 	// 配置済みパーツ
 	for _, part := range se.player.Parts {
 		cx, cy := gridCellPos(x, y, part.GX, part.GY)
-		entity.DrawPart(dst, part, float32(cx), float32(cy), float32(cs), theme)
+		entity.DrawPart(dst, part.Kind(), float32(cx), float32(cy), float32(cs), theme)
 	}
 	// カーソル
 	cx, cy := gridCellPos(x, y, se.cursorGX, se.cursorGY)
@@ -199,20 +218,25 @@ func (se *StationEditor) drawShipGrid(dst *ebiten.Image, theme *ui.Theme, x, y f
 func (se *StationEditor) drawPalette(dst *ebiten.Image, theme *ui.Theme, x, y float64) {
 	ui.DrawText(dst, "PARTS", x, y, 1.6, theme.Line)
 	lineY := y + 32
-	for i, kind := range entity.AllPlaceablePartKinds() {
-		qty := se.player.PartsInventory[kind]
+	for i, def := range se.palette {
+		qty := se.player.PartsInventory[def.ID]
 		clr := theme.Line
 		if qty == 0 {
 			clr = theme.LineDim
 		}
 		prefix := "  "
-		if kind == se.selected {
+		if i == se.paletteIx {
 			prefix = "> "
 		}
+		// 先頭9件は数字キーで直接選択可能
+		idxLabel := "  "
+		if i < 9 {
+			idxLabel = fmt.Sprintf("%d ", i+1)
+		}
 		ui.DrawText(dst,
-			fmt.Sprintf("%s%d %-9s x%d", prefix, i+1, entity.PartName(kind), qty),
-			x, lineY, 1.4, clr)
-		lineY += 26
+			fmt.Sprintf("%s%s%-15s x%d", prefix, idxLabel, def.Name, qty),
+			x, lineY, 1.3, clr)
+		lineY += 24
 	}
 }
 
@@ -221,13 +245,17 @@ func (se *StationEditor) drawCursorInfo(dst *ebiten.Image, theme *ui.Theme, x, y
 	ui.DrawText(dst, cursorText, x, y, 1.3, theme.LineDim)
 	if i := se.partAtCursor(); i >= 0 {
 		p := se.player.Parts[i]
-		ui.DrawText(dst, "Cell: "+entity.PartName(p.Kind), x, y+22, 1.3, theme.Line)
+		name := "?"
+		if d := p.Def(); d != nil {
+			name = d.Name
+		}
+		ui.DrawText(dst, "Cell: "+name, x, y+22, 1.3, theme.Line)
 	} else {
 		ui.DrawText(dst, "Cell: Empty", x, y+22, 1.3, theme.LineDim)
 	}
-	ui.DrawText(dst,
-		fmt.Sprintf("Selected: %s (x%d)",
-			entity.PartName(se.selected),
-			se.player.PartsInventory[se.selected]),
-		x, y+44, 1.3, theme.Line)
+	if def := se.selectedDef(); def != nil {
+		ui.DrawText(dst,
+			fmt.Sprintf("Selected: %s (x%d)", def.Name, se.player.PartsInventory[def.ID]),
+			x, y+44, 1.3, theme.Line)
+	}
 }

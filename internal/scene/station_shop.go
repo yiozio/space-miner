@@ -23,12 +23,14 @@ const (
 )
 
 // shopItem はスロット内アイテムの内容。
+// パーツの場合は PartID（バリアント識別）を保持し、価格・名前・説明は PartDef から引く。
 type shopItem struct {
 	Name        string
 	Description string
 	Price       int
 	IsResource  bool
-	PartKind    entity.PartKind
+	PartID      entity.PartID
+	PartKind    entity.PartKind // 描画アイコン用（カテゴリ）
 	ResType     entity.ResourceType
 }
 
@@ -53,53 +55,65 @@ type StationShop struct {
 	sessionNet       int
 }
 
+// shopStockIDs は初期店在庫として並べるパーツバリアント。
+var shopStockIDs = []entity.PartID{
+	entity.PartIDGunMkI,
+	entity.PartIDGunMkII,
+	entity.PartIDGunRapid,
+	entity.PartIDThrusterStd,
+	entity.PartIDThrusterLight,
+	entity.PartIDThrusterHeavy,
+	entity.PartIDCargoStd,
+	entity.PartIDArmorStd,
+	entity.PartIDAutoAimStd,
+	entity.PartIDFuelStd,
+	entity.PartIDShieldStd,
+}
+
 // NewStationShop は店舗シーンを生成する。
-// 店在庫はサンプルパーツを固定初期化、自分側は毎フレーム refreshPlayerSlots で
+// 店在庫は shopStockIDs から固定初期化、自分側は毎フレーム refreshPlayerSlots で
 // プレイヤー状態から再構築する。
 func NewStationShop(p *entity.Player) *StationShop {
 	s := &StationShop{player: p}
-	s.shopSlots[0] = shopSlot{Item: shopParts(entity.PartGun, "Forward-firing gun."), Quantity: 5}
-	s.shopSlots[1] = shopSlot{Item: shopParts(entity.PartThruster, "Engine module."), Quantity: 3}
-	s.shopSlots[2] = shopSlot{Item: shopParts(entity.PartCargo, "Resource storage."), Quantity: 6}
-	s.shopSlots[3] = shopSlot{Item: shopParts(entity.PartArmor, "Hardened plating."), Quantity: 4}
-	s.shopSlots[4] = shopSlot{Item: shopParts(entity.PartAutoAim, "Auto-targets nearby asteroids."), Quantity: 2}
-	s.shopSlots[5] = shopSlot{Item: shopParts(entity.PartFuel, "Auxiliary fuel tank."), Quantity: 4}
-	s.shopSlots[6] = shopSlot{Item: shopParts(entity.PartShield, "Shield generator."), Quantity: 2}
+	for i, id := range shopStockIDs {
+		if i >= shopSlotCount {
+			break
+		}
+		def := entity.PartDefByID(id)
+		if def == nil {
+			continue
+		}
+		s.shopSlots[i] = shopSlot{Item: itemFromDef(def), Quantity: shopInitialQuantity(def)}
+	}
 	s.refreshPlayerSlots()
 	return s
 }
 
-// shopParts はパーツ種別から shopItem を組み立てる（共通価格を引く）。
-func shopParts(kind entity.PartKind, desc string) shopItem {
+// itemFromDef は PartDef から店舗用 shopItem を組み立てる。
+func itemFromDef(d *entity.PartDef) shopItem {
 	return shopItem{
-		Name:        entity.PartName(kind),
-		Description: desc,
-		Price:       partPrice(kind),
-		PartKind:    kind,
+		Name:        d.Name,
+		Description: d.Desc,
+		Price:       d.Price,
+		PartID:      d.ID,
+		PartKind:    d.Kind,
 	}
 }
 
-// partPrice はパーツ売買の共通価格。
-func partPrice(kind entity.PartKind) int {
-	switch kind {
+// shopInitialQuantity は def に応じた初期入荷数を返す。
+// 高価・希少なものは少なめ、消耗系（弾薬枠等）は多めに置く想定。
+func shopInitialQuantity(d *entity.PartDef) int {
+	switch d.Kind {
 	case entity.PartGun:
-		return 80
+		return 4
 	case entity.PartThruster:
-		return 120
-	case entity.PartFuel:
-		return 70
-	case entity.PartCargo:
-		return 60
-	case entity.PartArmor:
-		return 100
-	case entity.PartShield:
-		return 150
-	case entity.PartAutoAim:
-		return 250
-	case entity.PartWarp:
-		return 400
+		return 3
+	case entity.PartFuel, entity.PartCargo:
+		return 5
+	case entity.PartAutoAim, entity.PartShield, entity.PartWarp:
+		return 2
 	}
-	return 30
+	return 3
 }
 
 // resourcePrice は資源1単位の価格。
@@ -140,20 +154,14 @@ func (ss *StationShop) refreshPlayerSlots() {
 		}
 		idx++
 	}
-	for _, kind := range entity.AllPlaceablePartKinds() {
-		qty := ss.player.PartsInventory[kind]
+	for _, def := range entity.AllPlaceablePartDefs() {
+		qty := ss.player.PartsInventory[def.ID]
 		if qty <= 0 || idx >= shopSlotCount {
 			continue
 		}
-		ss.playerSlots[idx] = shopSlot{
-			Item: shopItem{
-				Name:        entity.PartName(kind),
-				Description: entity.PartName(kind) + " part (spare).",
-				Price:       partPrice(kind),
-				PartKind:    kind,
-			},
-			Quantity: qty,
-		}
+		item := itemFromDef(def)
+		item.Description = def.Name + " (spare)."
+		ss.playerSlots[idx] = shopSlot{Item: item, Quantity: qty}
 		idx++
 	}
 }
@@ -231,7 +239,7 @@ func (ss *StationShop) transferOne() {
 		if slot.Item.IsResource {
 			ss.player.Inventory[slot.Item.ResType]++
 		} else {
-			ss.player.PartsInventory[slot.Item.PartKind]++
+			ss.player.PartsInventory[slot.Item.PartID]++
 		}
 	} else {
 		ss.player.Credits += slot.Item.Price
@@ -241,7 +249,7 @@ func (ss *StationShop) transferOne() {
 		if slot.Item.IsResource {
 			ss.player.Inventory[slot.Item.ResType]--
 		} else {
-			ss.player.PartsInventory[slot.Item.PartKind]--
+			ss.player.PartsInventory[slot.Item.PartID]--
 		}
 	}
 }
@@ -313,11 +321,11 @@ func (ss *StationShop) drawSlotIcon(dst *ebiten.Image, theme *ui.Theme, cx, cy, 
 		ui.DrawText(dst, label, cx+(cs-lw)/2, cy+(cs-lh)/2-4, 2.0, theme.Line)
 		return
 	}
-	// パーツはミニアイコン
+	// パーツはカテゴリで決まるミニアイコン
 	iconCell := float32(cs * 0.8)
 	ix := float32(cx) + (float32(cs)-iconCell)/2
 	iy := float32(cy) + (float32(cs)-iconCell)/2 - 4
-	entity.DrawPart(dst, entity.Part{Kind: s.Item.PartKind}, ix, iy, iconCell, theme)
+	entity.DrawPart(dst, s.Item.PartKind, ix, iy, iconCell, theme)
 }
 
 func (ss *StationShop) drawSummary(dst *ebiten.Image, theme *ui.Theme, x, y float64) {
@@ -355,4 +363,32 @@ func (ss *StationShop) drawInfo(dst *ebiten.Image, theme *ui.Theme, x, y, _ floa
 	ui.DrawText(dst, action, x, lineY, 1.4, theme.Line)
 	lineY += 32
 	ui.DrawText(dst, slot.Item.Description, x, lineY, 1.1, theme.LineDim)
+	// パーツの場合は性能ステータスを補足表示
+	if !slot.Item.IsResource {
+		if d := entity.PartDefByID(slot.Item.PartID); d != nil {
+			lineY += 26
+			for _, line := range partStatLines(d) {
+				ui.DrawText(dst, line, x, lineY, 1.1, theme.LineDim)
+				lineY += 18
+			}
+		}
+	}
+}
+
+// partStatLines は def の Kind に応じたステータス文字列を返す。
+func partStatLines(d *entity.PartDef) []string {
+	switch d.Kind {
+	case entity.PartGun:
+		return []string{
+			fmt.Sprintf("DMG %d   COOLDOWN %df", d.GunDamage, d.GunCooldown),
+			fmt.Sprintf("BULLET SPD %.1f", d.GunBulletSpeed),
+		}
+	case entity.PartThruster:
+		return []string{
+			fmt.Sprintf("ACCEL %.2f   MAX SPD %.1f", d.ThrustAccel, d.ThrustMaxSpeed),
+			fmt.Sprintf("BOOST x%.1f   MAX %.1f", d.ThrustBoostAccelMul, d.ThrustBoostMaxSpeed),
+			fmt.Sprintf("FUEL/F %.2f", d.ThrustBoostFuelCost),
+		}
+	}
+	return nil
 }
