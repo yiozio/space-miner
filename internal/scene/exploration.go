@@ -787,9 +787,8 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 }
 
 func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
-	// ステータス: HP/シールドは自機下部のバーで表示するためここから除外。
-	statusLine := fmt.Sprintf("FUEL %d/%d   CARGO %.0f/%.0f   CR %d",
-		int(e.player.Fuel), int(e.player.MaxFuel),
+	// ステータス: HP / シールド / FUEL は自機下部のバーで表示するためここから除外。
+	statusLine := fmt.Sprintf("CARGO %.0f/%.0f   CR %d",
 		e.player.CargoLoad(), e.player.MaxCargo,
 		e.player.Credits)
 	ui.DrawText(dst, statusLine, 20, 20, 1.5, theme.Line)
@@ -1030,9 +1029,10 @@ func (e *Exploration) handleHostileBulletsHitPlayer() {
 	}
 }
 
-// drawPlayerVitalBars は自機の下に HP バーと（あれば）シールドバーを描画する。
+// drawPlayerVitalBars は自機の下に HP / シールド / Fuel バーを縦に並べて描画する。
 // バーの位置は船体パーツのバウンディング半径（円相当）+ 余白で、
 // 機体の向きに依らずパーツと被らないようにする。
+// シールドは MaxShieldHP > 0 のとき、Fuel は MaxFuel > 0 のときのみ表示。
 func (e *Exploration) drawPlayerVitalBars(dst *ebiten.Image, theme *ui.Theme, psx, psy float64) {
 	// 船体半径: 各パーツのセル中心 + g/2 の最大距離
 	g := float64(entity.GridSize)
@@ -1052,18 +1052,27 @@ func (e *Exploration) drawPlayerVitalBars(dst *ebiten.Image, theme *ui.Theme, ps
 		barMargin = 18.0
 	)
 	x0 := psx - barW/2
-	y0 := psy + radius + barMargin
+	y := psy + radius + barMargin
 
-	// HP バー
-	drawVitalBar(dst, x0, y0, barW, barH,
+	// HP バー（赤）
+	drawVitalBar(dst, x0, y, barW, barH,
 		float64(e.player.HP)/float64(maxIntOr1(e.player.MaxHP)),
-		color.NRGBA{0x60, 0xff, 0x80, 0xff}, theme.LineDim)
+		color.NRGBA{0xff, 0x60, 0x60, 0xff}, theme.LineDim)
+	y += barH + barGap
 
-	// シールドバー（MaxShieldHP > 0 のとき）
+	// シールドバー（シアン、MaxShieldHP > 0 のとき）
 	if e.player.MaxShieldHP > 0 {
-		drawVitalBar(dst, x0, y0+barH+barGap, barW, barH,
+		drawVitalBar(dst, x0, y, barW, barH,
 			float64(e.player.ShieldHP)/float64(e.player.MaxShieldHP),
 			color.NRGBA{0x60, 0xc0, 0xff, 0xff}, theme.LineDim)
+		y += barH + barGap
+	}
+
+	// Fuel バー（黄、MaxFuel > 0 のとき）。常に最下段。
+	if e.player.MaxFuel > 0 {
+		drawVitalBar(dst, x0, y, barW, barH,
+			e.player.Fuel/e.player.MaxFuel,
+			color.NRGBA{0xff, 0xe0, 0x60, 0xff}, theme.LineDim)
 	}
 }
 
