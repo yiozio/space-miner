@@ -1,6 +1,6 @@
 module github.com/yiozio/space-miner
 
-go 1.22.0
+go 1.25.0
 
 require (
 	github.com/hajimehoshi/ebiten/v2 v2.8.6
