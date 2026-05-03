@@ -22,12 +22,14 @@ const (
 // StationEditor は宇宙船編集画面。
 // 7×7 のグリッドにカーソルを置き、左パレットで選んだパーツを設置・取り外しできる。
 // コックピットは原点 (0, 0) に固定（編集対象外）。スペアパーツは Player.PartsInventory。
+// brushRotation は新規配置時に適用される向き（0..3、90° 単位 CW）。R キーで循環。
 type StationEditor struct {
-	player    *entity.Player
-	cursorGX  int
-	cursorGY  int
-	palette   []*entity.PartDef // 配置可能な全 def（一覧表示順）
-	paletteIx int               // 現在選択中の palette インデックス
+	player        *entity.Player
+	cursorGX      int
+	cursorGY      int
+	palette       []*entity.PartDef // 配置可能な全 def（一覧表示順）
+	paletteIx     int               // 現在選択中の palette インデックス
+	brushRotation int               // 0..3
 }
 
 // NewStationEditor は編集シーンを生成する。
@@ -96,6 +98,20 @@ func (se *StationEditor) Update(d Director) error {
 		se.paletteIx = (se.paletteIx + 1) % len(se.palette)
 	}
 
+	// 回転: R キー
+	//   - カーソル上に配置済みパーツがあればそれを 90° 回転
+	//   - 無ければブラシ回転（次回設置時の向き）を循環
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		if i := se.partAtCursor(); i >= 0 {
+			if se.player.Parts[i].Kind() != entity.PartCockpit {
+				se.player.Parts[i].Rotation = (se.player.Parts[i].Rotation + 1) % 4
+				se.player.OnPartsChanged()
+			}
+		} else {
+			se.brushRotation = (se.brushRotation + 1) % 4
+		}
+	}
+
 	// 配置
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 		se.tryPlace()
@@ -130,9 +146,10 @@ func (se *StationEditor) tryPlace() {
 		return
 	}
 	se.player.Parts = append(se.player.Parts, entity.Part{
-		DefID: def.ID,
-		GX:    se.cursorGX,
-		GY:    se.cursorGY,
+		DefID:    def.ID,
+		GX:       se.cursorGX,
+		GY:       se.cursorGY,
+		Rotation: se.brushRotation,
 	})
 	se.player.PartsInventory[def.ID]--
 	se.player.OnPartsChanged()
@@ -180,7 +197,7 @@ func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
 	se.drawCursorInfo(dst, theme, gridStartX, contentY+gridPx+24)
 
 	ui.DrawText(dst,
-		"[ WASD/Arrows: Move    1-9: Quick Select    Q/E: Cycle Palette    Space: Place    X: Remove    Esc: Back ]",
+		"[ WASD/Arrows: Move   1-9: Quick Select   Q/E: Cycle Palette   R: Rotate   Space: Place   X: Remove   Esc: Back ]",
 		20, float64(sh)-30, 1.3, theme.LineDim)
 }
 
@@ -208,7 +225,7 @@ func (se *StationEditor) drawShipGrid(dst *ebiten.Image, theme *ui.Theme, x, y f
 	// 配置済みパーツ
 	for _, part := range se.player.Parts {
 		cx, cy := gridCellPos(x, y, part.GX, part.GY)
-		entity.DrawPart(dst, part.Kind(), float32(cx), float32(cy), float32(cs), theme)
+		entity.DrawPart(dst, part.Kind(), float32(cx), float32(cy), float32(cs), theme, part.Rotation)
 	}
 	// カーソル
 	cx, cy := gridCellPos(x, y, se.cursorGX, se.cursorGY)
@@ -249,13 +266,29 @@ func (se *StationEditor) drawCursorInfo(dst *ebiten.Image, theme *ui.Theme, x, y
 		if d := p.Def(); d != nil {
 			name = d.Name
 		}
-		ui.DrawText(dst, "Cell: "+name, x, y+22, 1.3, theme.Line)
+		ui.DrawText(dst, fmt.Sprintf("Cell: %s   %s", name, rotationLabel(p.Rotation)), x, y+22, 1.3, theme.Line)
 	} else {
 		ui.DrawText(dst, "Cell: Empty", x, y+22, 1.3, theme.LineDim)
 	}
 	if def := se.selectedDef(); def != nil {
 		ui.DrawText(dst,
-			fmt.Sprintf("Selected: %s (x%d)", def.Name, se.player.PartsInventory[def.ID]),
+			fmt.Sprintf("Selected: %s (x%d)   Brush: %s",
+				def.Name, se.player.PartsInventory[def.ID], rotationLabel(se.brushRotation)),
 			x, y+44, 1.3, theme.Line)
 	}
+}
+
+// rotationLabel は回転値を人間可読な文字列にする。
+func rotationLabel(r int) string {
+	switch ((r % 4) + 4) % 4 {
+	case 0:
+		return "0°"
+	case 1:
+		return "90°"
+	case 2:
+		return "180°"
+	case 3:
+		return "270°"
+	}
+	return ""
 }

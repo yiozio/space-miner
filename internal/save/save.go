@@ -78,10 +78,12 @@ type QuestState struct {
 }
 
 // PartState は配置済みパーツ 1 つの保存形式。
+// Rotation は省略可能（旧セーブ互換: 未設定なら 0）。
 type PartState struct {
-	DefID int `json:"def_id"`
-	GX    int `json:"gx"`
-	GY    int `json:"gy"`
+	DefID    int `json:"def_id"`
+	GX       int `json:"gx"`
+	GY       int `json:"gy"`
+	Rotation int `json:"rotation,omitempty"`
 }
 
 // Context は Save が呼び出し側から受け取る追加情報。
@@ -235,7 +237,7 @@ func readState(slot int) (*State, error) {
 func makePlayerState(player *entity.Player) PlayerState {
 	parts := make([]PartState, len(player.Parts))
 	for i, pt := range player.Parts {
-		parts[i] = PartState{DefID: int(pt.DefID), GX: pt.GX, GY: pt.GY}
+		parts[i] = PartState{DefID: int(pt.DefID), GX: pt.GX, GY: pt.GY, Rotation: pt.Rotation}
 	}
 	inv := make(map[int]int, len(player.Inventory))
 	for k, v := range player.Inventory {
@@ -305,9 +307,10 @@ func restorePlayer(ps PlayerState) *entity.Player {
 	parts := make([]entity.Part, len(ps.Parts))
 	for i, pt := range ps.Parts {
 		parts[i] = entity.Part{
-			DefID: entity.PartID(pt.DefID),
-			GX:    pt.GX,
-			GY:    pt.GY,
+			DefID:    entity.PartID(pt.DefID),
+			GX:       pt.GX,
+			GY:       pt.GY,
+			Rotation: pt.Rotation,
 		}
 	}
 	inv := make(map[entity.ResourceType]int, len(ps.Inventory))

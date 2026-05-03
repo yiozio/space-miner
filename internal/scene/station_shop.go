@@ -296,7 +296,7 @@ func (ss *StationShop) drawSlotIcon(dst *ebiten.Image, theme *ui.Theme, cx, cy, 
 	iconCell := float32(cs * 0.8)
 	ix := float32(cx) + (float32(cs)-iconCell)/2
 	iy := float32(cy) + (float32(cs)-iconCell)/2 - 4
-	entity.DrawPart(dst, s.Item.PartKind, ix, iy, iconCell, theme)
+	entity.DrawPart(dst, s.Item.PartKind, ix, iy, iconCell, theme, 0)
 }
 
 func (ss *StationShop) drawSummary(dst *ebiten.Image, theme *ui.Theme, x, y float64) {
