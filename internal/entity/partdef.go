@@ -48,6 +48,13 @@ type PartDef struct {
 	// Weight はそのパーツをスペアパーツとして所持する際の単位重量。
 	CargoCapacity float64
 	Weight        float64
+
+	// AutoAim 用ステータス。Kind != PartAutoAim の def では未使用。
+	// AutoAimRange は対象グリッドまでの最大射程（パーツワールド位置からの距離、px）。
+	// AutoAimDPS は射程内のときに毎秒与えるダメージ。
+	// 複数の AutoAim パーツが同じターゲットを射程内に捉えていれば DPS が合算される。
+	AutoAimRange float64
+	AutoAimDPS   float64
 }
 
 var (

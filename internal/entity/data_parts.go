@@ -153,9 +153,11 @@ func init() {
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDAutoAimStd, Kind: PartAutoAim,
-		Name: "Auto-Aim", Desc: "Auto-targets nearby asteroids.",
-		Price:  250,
-		Weight: 3,
+		Name: "Auto-Aim", Desc: "Beams the last-hit asteroid grid by grid. Damage over time.",
+		Price:        250,
+		Weight:       3,
+		AutoAimRange: 500,
+		AutoAimDPS:   4,
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDWarpStd, Kind: PartWarp,

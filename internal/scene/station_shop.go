@@ -380,6 +380,11 @@ func partStatLines(d *entity.PartDef) []string {
 		return []string{
 			fmt.Sprintf("CARGO CAP +%.0f", d.CargoCapacity),
 		}
+	case entity.PartAutoAim:
+		return []string{
+			fmt.Sprintf("RANGE %.0f   DPS %.1f", d.AutoAimRange, d.AutoAimDPS),
+			"BEAMS LAST-HIT ASTEROID",
+		}
 	}
 	return nil
 }
