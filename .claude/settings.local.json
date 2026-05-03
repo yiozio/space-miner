@@ -4,7 +4,8 @@
       "Bash(go mod *)",
       "Bash(gofmt -w .)",
       "Bash(go vet *)",
-      "Bash(go build *)"
+      "Bash(go build *)",
+      "Bash(gofmt -l .)"
     ]
   }
 }

@@ -7,18 +7,12 @@ import (
 )
 
 const (
-	playerRotateSpeed     = 0.06
-	playerThrustAccel     = 0.15
-	playerBoostMultiplier = 2.5
-	playerMaxSpeed        = 8.0
-	playerBoostMaxSpeed   = 14.0
-	playerFireCooldown    = 12   // フレーム単位（60fps で約5発/秒）
-	playerBoostFuelCost   = 0.30 // ブースト1フレーム分の燃料消費（60fps で約18/秒）
-	playerOverspeedDecel  = 0.10 // 通常最高速度を超えた分を毎フレームこれだけ削る（thrustFactor 倍でスケール）
-	PlayerHPDefault       = 100  // 初期 HP / 最大 HP
-	PlayerFuelDefault     = 100  // 初期燃料 / 最大燃料
-	PlayerCreditsDefault  = 100  // 初期所持クレジット
-	PlayerInvulnFrames    = 30   // 被弾後の無敵フレーム
+	playerRotateSpeed    = 0.06
+	playerOverspeedDecel = 0.10 // 通常最高速度を超えた分を毎フレームこれだけ削る（スラスタ数倍でスケール）
+	PlayerHPDefault      = 100  // 初期 HP / 最大 HP
+	PlayerFuelDefault    = 100  // 初期燃料 / 最大燃料
+	PlayerCreditsDefault = 100  // 初期所持クレジット
+	PlayerInvulnFrames   = 30   // 被弾後の無敵フレーム
 )
 
 // Player はプレイヤー機。Ship に操作・発射・インベントリ・HP・燃料・クレジットを加えたもの。
@@ -32,7 +26,7 @@ type Player struct {
 	InvulnTimer    int // 被弾後の残無敵フレーム（描画フラッシュにも使う）
 	fireTimer      int
 	Inventory      map[ResourceType]int // 資源
-	PartsInventory map[PartKind]int     // 船に未取付のスペアパーツ
+	PartsInventory map[PartID]int       // 船に未取付のスペアパーツ
 	// 動的なスピード上限。ブースト時に boost 上限へ瞬時上昇し、解除後は徐々に通常上限へ減衰する。
 	speedCap float64
 }
@@ -43,11 +37,11 @@ func NewPlayerPebble() *Player {
 	return &Player{
 		Ship: Ship{
 			Parts: []Part{
-				{Kind: PartThruster, GX: 0, GY: -1},
-				{Kind: PartGun, GX: -1, GY: 0},
-				{Kind: PartCockpit, GX: 0, GY: 0},
-				{Kind: PartGun, GX: 1, GY: 0},
-				{Kind: PartFuel, GX: 0, GY: 1},
+				{DefID: PartIDThrusterStd, GX: 0, GY: -1},
+				{DefID: PartIDGunMkI, GX: -1, GY: 0},
+				{DefID: PartIDCockpit, GX: 0, GY: 0},
+				{DefID: PartIDGunMkI, GX: 1, GY: 0},
+				{DefID: PartIDFuelStd, GX: 0, GY: 1},
 			},
 			Angle: -math.Pi / 2, // 起動時はビジュアル的に上向き
 		},
@@ -57,25 +51,43 @@ func NewPlayerPebble() *Player {
 		MaxFuel:        PlayerFuelDefault,
 		Credits:        PlayerCreditsDefault,
 		Inventory:      make(map[ResourceType]int),
-		PartsInventory: make(map[PartKind]int),
+		PartsInventory: make(map[PartID]int),
 	}
 }
 
-// thrusterCount は機体に取り付けられている Thruster パーツの数を返す。
-// 加速度・最高速度はこの数に比例する。
-func (p *Player) thrusterCount() int {
-	n := 0
+// thrusterAgg は搭載スラスタの集計値。
+// Accel/MaxSpeed/BoostMaxSpeed/BoostFuelCost は全スラスタ分の合算、
+// BoostAccelMul は最も性能の良い（倍率の大きい）スラスタの値を採用する。
+type thrusterAgg struct {
+	count           int
+	accel, maxSpeed float64
+	boostAccelMul   float64
+	boostMaxSpeed   float64
+	boostFuelCost   float64
+}
+
+func (p *Player) thrusterStats() thrusterAgg {
+	var t thrusterAgg
 	for _, part := range p.Parts {
-		if part.Kind == PartThruster {
-			n++
+		d := part.Def()
+		if d == nil || d.Kind != PartThruster {
+			continue
+		}
+		t.count++
+		t.accel += d.ThrustAccel
+		t.maxSpeed += d.ThrustMaxSpeed
+		t.boostMaxSpeed += d.ThrustBoostMaxSpeed
+		t.boostFuelCost += d.ThrustBoostFuelCost
+		if d.ThrustBoostAccelMul > t.boostAccelMul {
+			t.boostAccelMul = d.ThrustBoostAccelMul
 		}
 	}
-	return n
+	return t
 }
 
 // Update はキー入力に応じて機体を1フレーム動かす。発射は Shoot で別途行う。
-// 加速度・最高速度は搭載 Thruster 数に線形でスケールする。
-// Thruster が 0 のときは推力ゼロだが、既存の慣性は保持する。
+// 加速度・最高速度・ブースト性能は搭載スラスタの def から集計する。
+// スラスタが 0 のときは推力ゼロだが、既存の慣性は保持する。
 func (p *Player) Update() {
 	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
 		p.Angle -= playerRotateSpeed
@@ -84,20 +96,19 @@ func (p *Player) Update() {
 		p.Angle += playerRotateSpeed
 	}
 
-	thrusters := p.thrusterCount()
-	thrustFactor := float64(thrusters)
+	ts := p.thrusterStats()
 
 	accel := 0.0
 	p.ThrustState = ThrustOff
-	if thrusters > 0 && (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp)) {
-		accel = playerThrustAccel * thrustFactor
+	if ts.count > 0 && (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp)) {
+		accel = ts.accel
 		p.ThrustState = ThrustOn
 		// ブーストは燃料が残っているときのみ有効
 		boostHeld := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
 		if boostHeld && p.Fuel > 0 {
-			accel *= playerBoostMultiplier
+			accel *= ts.boostAccelMul
 			p.ThrustState = ThrustBoost
-			p.Fuel -= playerBoostFuelCost
+			p.Fuel -= ts.boostFuelCost
 			if p.Fuel < 0 {
 				p.Fuel = 0
 			}
@@ -106,12 +117,12 @@ func (p *Player) Update() {
 	// 動的スピード上限の更新。
 	// ブースト中: boost 上限に瞬時セット。
 	// 非ブースト時: 通常上限まで毎フレーム少しずつ降下、超えていなければ即時通常上限。
-	if thrusters > 0 {
-		normalLimit := playerMaxSpeed * thrustFactor
+	if ts.count > 0 {
+		normalLimit := ts.maxSpeed
 		if p.ThrustState == ThrustBoost {
-			p.speedCap = playerBoostMaxSpeed * thrustFactor
+			p.speedCap = ts.boostMaxSpeed
 		} else if p.speedCap > normalLimit {
-			p.speedCap -= playerOverspeedDecel * thrustFactor
+			p.speedCap -= playerOverspeedDecel * float64(ts.count)
 			if p.speedCap < normalLimit {
 				p.speedCap = normalLimit
 			}
@@ -125,7 +136,7 @@ func (p *Player) Update() {
 
 	// Thruster がある場合のみ speedCap でハードクランプ。
 	// 通常加速で抜けないようにここでクランプを効かせる。
-	if thrusters > 0 {
+	if ts.count > 0 {
 		speed := math.Hypot(p.VX, p.VY)
 		if speed > p.speedCap {
 			p.VX = p.VX / speed * p.speedCap
@@ -158,6 +169,8 @@ func (p *Player) Damage(amount int) {
 }
 
 // Shoot はクールダウンが許せば各 Gun パーツから1発ずつ弾を発射する。
+// 各弾はそのガンの def に応じたダメージ・弾速で生成され、
+// クールダウンは発射に参加したガンの中で最も長いものを採用する（最遅ガンが律速）。
 // 戻り値は今フレームに発射された弾。クールダウン中なら nil。
 func (p *Player) Shoot() []Bullet {
 	if p.fireTimer > 0 {
@@ -166,8 +179,10 @@ func (p *Player) Shoot() []Bullet {
 	var out []Bullet
 	sin, cos := math.Sin(p.Angle), math.Cos(p.Angle)
 	g := float64(GridSize)
+	maxCooldown := 0
 	for _, part := range p.Parts {
-		if part.Kind != PartGun {
+		d := part.Def()
+		if d == nil || d.Kind != PartGun {
 			continue
 		}
 		// ガンの前端中心（ローカル）。ローカル -y が前方なので GY*g - g/2。
@@ -177,15 +192,19 @@ func (p *Player) Shoot() []Bullet {
 		wox := -sin*lx - cos*frontLy
 		woy := cos*lx - sin*frontLy
 		out = append(out, Bullet{
-			X:    p.X + wox,
-			Y:    p.Y + woy,
-			VX:   cos*bulletSpeed + p.VX,
-			VY:   sin*bulletSpeed + p.VY,
-			Life: bulletLifeFrames,
+			X:      p.X + wox,
+			Y:      p.Y + woy,
+			VX:     cos*d.GunBulletSpeed + p.VX,
+			VY:     sin*d.GunBulletSpeed + p.VY,
+			Life:   bulletLifeFrames,
+			Damage: d.GunDamage,
 		})
+		if d.GunCooldown > maxCooldown {
+			maxCooldown = d.GunCooldown
+		}
 	}
 	if len(out) > 0 {
-		p.fireTimer = playerFireCooldown
+		p.fireTimer = maxCooldown
 	}
 	return out
 }

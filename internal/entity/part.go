@@ -7,7 +7,8 @@ import (
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
-// PartKind はパーツ種別。
+// PartKind はパーツのカテゴリ（振る舞い分類）。
+// 同じ Kind でも複数のバリアント（PartID）が存在しうる。
 type PartKind int
 
 const (
@@ -25,56 +26,29 @@ const (
 // Part はグリッド配置されたパーツ。
 // (GX, GY) はコックピットを原点 (0, 0) としたローカル座標。
 // +y はビジュアル上の後方（ローカル -y が機体の進行方向）。
+// DefID は性能・名前・価格などのバリアント情報の参照。
 type Part struct {
-	Kind   PartKind
+	DefID  PartID
 	GX, GY int
 }
 
-// PartName はパーツ種別の表示名（UI 用）を返す。
-func PartName(kind PartKind) string {
-	switch kind {
-	case PartCockpit:
-		return "Cockpit"
-	case PartGun:
-		return "Gun"
-	case PartThruster:
-		return "Thruster"
-	case PartFuel:
-		return "Fuel"
-	case PartCargo:
-		return "Cargo"
-	case PartArmor:
-		return "Armor"
-	case PartShield:
-		return "Shield"
-	case PartAutoAim:
-		return "Auto-Aim"
-	case PartWarp:
-		return "Warp"
-	}
-	return "Unknown"
-}
+// Def は DefID に対応する PartDef を返す。
+func (p Part) Def() *PartDef { return PartDefByID(p.DefID) }
 
-// AllPlaceablePartKinds はエディタのパレットに並べる種別を返す。
-// Cockpit は必ず原点に1つだけ存在する前提のため除外する。
-func AllPlaceablePartKinds() []PartKind {
-	return []PartKind{
-		PartGun, PartThruster, PartFuel, PartCargo,
-		PartArmor, PartShield, PartAutoAim, PartWarp,
-	}
-}
+// Kind は Def 経由でカテゴリを返す。
+func (p Part) Kind() PartKind { return p.Def().Kind }
 
-// DrawPart は1パーツを image 上の (x, y) を該当グリッド左上として描画する。
+// DrawPart は指定 Kind のアイコンを image 上の (x, y) を該当グリッド左上として描画する。
 // cellSize はグリッド一辺の論理ピクセル数で、エディタのような拡大表示にも対応する。
-// 描画は theme.Line のみを使うレトロベクター風の単色線画。
-func DrawPart(dst *ebiten.Image, p Part, x, y, cellSize float32, theme *ui.Theme) {
+// バリアント間で見た目は共通（Kind で分岐）。
+func DrawPart(dst *ebiten.Image, kind PartKind, x, y, cellSize float32, theme *ui.Theme) {
 	g := cellSize
 	inset := g * 0.12
 	cx := x + g/2
 	cy := y + g/2
 	line := theme.Line
 
-	switch p.Kind {
+	switch kind {
 	case PartCockpit:
 		vector.StrokeLine(dst, cx, y+inset, x+inset, y+g-inset, 1, line, false)
 		vector.StrokeLine(dst, cx, y+inset, x+g-inset, y+g-inset, 1, line, false)

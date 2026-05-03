@@ -8,17 +8,17 @@ import (
 )
 
 const (
-	bulletSpeed      = 12.0
 	bulletLifeFrames = 60 // 約1秒
-	bulletDamage     = 1
 	bulletTrailWidth = 2
 )
 
 // Bullet はプレイヤー（または将来の敵）が発射する弾。
+// Damage は命中したアステロイドグリッドに与えるダメージで、発射したガンの def に従う。
 type Bullet struct {
 	X, Y   float64
 	VX, VY float64
 	Life   int // 残存フレーム
+	Damage int
 }
 
 func (b *Bullet) Update() {

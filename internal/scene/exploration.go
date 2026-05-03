@@ -208,9 +208,9 @@ func (e *Exploration) Update(d Director) error {
 
 	// 弾 vs 小惑星（衝突したら弾を消し、破壊グリッドからピックアップを生成）
 	for i := len(e.bullets) - 1; i >= 0; i-- {
-		bx, by := e.bullets[i].X, e.bullets[i].Y
+		b := &e.bullets[i]
 		for _, a := range e.asteroids {
-			absorbed, drops := a.Hit(bx, by)
+			absorbed, drops := a.Hit(b.X, b.Y, b.Damage)
 			if !absorbed {
 				continue
 			}
