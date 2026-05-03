@@ -24,7 +24,8 @@ func DefaultWorld() *World {
 	return &World{
 		Maps: []FullMap{
 			{
-				CX: DefaultStationX, CY: DefaultStationY,
+				Name: "Starter Sector",
+				CX:   DefaultStationX, CY: DefaultStationY,
 				HalfW: DefaultFullMapHalfW, HalfH: DefaultFullMapHalfH,
 				Zones: []ResourceZone{
 					// 起点近くの鉄ゾーン x2

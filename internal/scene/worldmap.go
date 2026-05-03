@@ -44,8 +44,11 @@ func (w *WorldMapView) Draw(dst *ebiten.Image, d Director) {
 	// 下層シーンを覆い隠す不透明背景
 	dst.Fill(theme.Background)
 
-	// ヘッダ
+	// ヘッダ（FullMap 名があれば併記）
 	header := "WORLD MAP"
+	if w.fmap != nil && w.fmap.Name != "" {
+		header = "WORLD MAP - " + w.fmap.Name
+	}
 	headerScale := 2.5
 	hw, hh := ui.MeasureText(header, headerScale)
 	headerY := 20.0

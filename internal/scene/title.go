@@ -1,7 +1,10 @@
 package scene
 
 import (
+	"log"
+
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/yiozio/space-miner/internal/save"
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
@@ -19,17 +22,23 @@ const (
 )
 
 // NewTitle は新しい Title シーンを返す。
+// Continue はセーブが 1 つ以上あれば最新セーブをロード、Load はスロット選択を開く。
 func NewTitle() *Title {
+	hasSave := save.AnyExists()
+	cursor := titleItemNewGame
+	if hasSave {
+		cursor = titleItemContinue
+	}
 	return &Title{
 		menu: &ui.Menu{
 			Items: []*ui.MenuItem{
-				{Label: "Continue", Enabled: false}, // セーブ機能は後続フェーズで実装
+				{Label: "Continue", Enabled: hasSave},
 				{Label: "New Game", Enabled: true},
-				{Label: "Load", Enabled: false}, // セーブ機能は後続フェーズで実装
+				{Label: "Load", Enabled: hasSave},
 				{Label: "Setting", Enabled: true},
 				{Label: "Quit Game", Enabled: true},
 			},
-			Cursor: titleItemNewGame,
+			Cursor: cursor,
 		},
 	}
 }
@@ -40,8 +49,24 @@ func (t *Title) Update(d Director) error {
 		return nil
 	}
 	switch t.menu.Cursor {
+	case titleItemContinue:
+		slot := save.LatestSlot()
+		if slot == 0 {
+			return nil
+		}
+		res, err := save.Load(slot)
+		if err != nil {
+			log.Printf("continue: load slot %d: %v", slot, err)
+			return nil
+		}
+		d.Replace(NewExplorationFromPlayer(res.Player, res.Playtime))
 	case titleItemNewGame:
 		d.Replace(NewExploration())
+	case titleItemLoad:
+		if !save.AnyExists() {
+			return nil
+		}
+		d.Push(NewSaveSlotForLoad())
 	case titleItemSetting:
 		d.Push(NewSettings(d.Theme()))
 	case titleItemQuit:
