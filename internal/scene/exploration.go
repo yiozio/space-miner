@@ -1020,6 +1020,8 @@ func (e *Exploration) drawWarpOverlay(dst *ebiten.Image, theme *ui.Theme, sw, sh
 // drawCelestialBackdrop は天体を FullMap 中心 (mapCX, mapCY) を anchor として描画する。
 // BackdropRadius が 0 の場合は何もしない。
 // 設計どおりの位置に見え、自機が動いても少しだけしか流れないようにする。
+// 不透明な惑星らしさを出すため、暗いベースの上に光源側（左上）へオフセットした
+// 明部とハイライトを重ね、輪郭はやや暗めにして遠景の球体感を演出する。
 func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
 	mapCX, mapCY, cameraX, cameraY, screenCX, screenCY float64) {
 	if body == nil || body.BackdropRadius <= 0 {
@@ -1036,12 +1038,42 @@ func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
 	if sx+r < 0 || sx-r > float32(sw) || sy+r < 0 || sy-r > float32(sh) {
 		return
 	}
-	// 本体: 半透明塗り
-	fill := body.Color
-	fill.A = 110
-	vector.DrawFilledCircle(dst, sx, sy, r, fill, true)
-	// 輪郭: 不透明
-	vector.StrokeCircle(dst, sx, sy, r, 1.5, body.Color, true)
+	// 暗側ベース（不透明）。ここが影の側として残る。
+	dark := scaleColor(body.Color, 0.9)
+	dark.A = 255
+	vector.DrawFilledCircle(dst, sx, sy, r, dark, true)
+	// 明側: 元の色を光源（左上）方向にオフセットしてやや小さく描く。
+	// 半径と offset の合計が r 以下になるよう調整して輪郭の外にはみ出さない。
+	lit := body.Color
+	lit.A = 255
+	vector.DrawFilledCircle(dst, sx-r*0.15, sy-r*0.15, r*0.78, lit, true)
+	// ハイライト: 光源直接光のように小さく明るい点。
+	hi := scaleColor(body.Color, 1.35)
+	hi.A = 220
+	vector.DrawFilledCircle(dst, sx-r*0.42, sy-r*0.42, r*0.2, hi, true)
+	// 輪郭は本体色をやや暗くして縁取り。遠景の球体らしくシャープすぎないように。
+	rim := scaleColor(body.Color, 0.7)
+	rim.A = 255
+	vector.StrokeCircle(dst, sx, sy, r, 1.0, rim, true)
+}
+
+// scaleColor は NRGBA の RGB 各成分を s 倍する。s>1 はクランプ、A は保持。
+func scaleColor(c color.NRGBA, s float64) color.NRGBA {
+	clamp := func(v float64) uint8 {
+		switch {
+		case v < 0:
+			return 0
+		case v > 255:
+			return 255
+		}
+		return uint8(v)
+	}
+	return color.NRGBA{
+		R: clamp(float64(c.R) * s),
+		G: clamp(float64(c.G) * s),
+		B: clamp(float64(c.B) * s),
+		A: c.A,
+	}
 }
 
 // 海賊の判定半径（弾命中・カル距離計算）
