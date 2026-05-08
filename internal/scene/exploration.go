@@ -63,6 +63,8 @@ type Exploration struct {
 
 	// 着弾エフェクト
 	impacts []entity.Impact
+	// 爆発エフェクト（海賊撃墜時など）
+	explosions []entity.Explosion
 	// 瞬間命中レーザーのビーム可視化（数フレーム描画）
 	beams []entity.Beam
 
@@ -404,6 +406,19 @@ func (e *Exploration) Update(d Director) error {
 			ni++
 		}
 		e.impacts = e.impacts[:ni]
+	}
+	// 爆発エフェクトの更新（寿命切れを除去）
+	{
+		ni := 0
+		for i := range e.explosions {
+			eff := &e.explosions[i]
+			if eff.Update() {
+				continue
+			}
+			e.explosions[ni] = *eff
+			ni++
+		}
+		e.explosions = e.explosions[:ni]
 	}
 	// レーザービームの更新（寿命切れを除去）
 	{
@@ -765,6 +780,11 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		eff := &e.impacts[i]
 		eff.Draw(dst, eff.X-e.cameraX+cx, eff.Y-e.cameraY+cy)
 	}
+	// 爆発エフェクト
+	for i := range e.explosions {
+		eff := &e.explosions[i]
+		eff.Draw(dst, eff.X-e.cameraX+cx, eff.Y-e.cameraY+cy)
+	}
 
 	// AutoAim ビーム（パーツ → 対象グリッド）
 	beamColor := color.NRGBA{0xff, 0xc0, 0x40, 0xff}
@@ -983,12 +1003,13 @@ func (e *Exploration) tickWarp() {
 			e.player.VX = 0
 			e.player.VY = 0
 			e.lastMap = dest
-			// ワープ前の局所状態（小惑星・ピックアップ・弾・海賊・着弾・自動照準）は持ち越さない
+			// ワープ前の局所状態（小惑星・ピックアップ・弾・海賊・着弾・爆発・自動照準）は持ち越さない
 			e.asteroids = e.asteroids[:0]
 			e.pickups = e.pickups[:0]
 			e.bullets = e.bullets[:0]
 			e.pirates = e.pirates[:0]
 			e.impacts = e.impacts[:0]
+			e.explosions = e.explosions[:0]
 			e.beams = e.beams[:0]
 			e.autoAimTarget = nil
 			e.autoAimGridIdx = -1
@@ -1351,6 +1372,10 @@ func (e *Exploration) cullPiratesAndDrop() {
 	for _, pr := range e.pirates {
 		if pr.HP <= 0 {
 			e.dropPirateLoot(pr)
+			// 撃墜時の爆発エフェクト
+			explosionColor := color.NRGBA{0xff, 0x80, 0x40, 0xff}
+			e.explosions = append(e.explosions,
+				entity.NewExplosion(pr.X, pr.Y, explosionColor, e.spawnRng))
 			if pm := e.world.Containing(pr.X, pr.Y); pm != nil {
 				if e.player.PiratesKilledByMap == nil {
 					e.player.PiratesKilledByMap = make(map[string]int)
