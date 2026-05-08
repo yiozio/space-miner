@@ -288,21 +288,30 @@ func (p *Player) Update() {
 	p.VX += accel * dirSign * cos
 	p.VY += accel * dirSign * sin
 
-	// 機軸（前後軸）に沿った成分でクランプ。横方向（接線方向）はクランプしない。
-	if fwd.count > 0 || bck.count > 0 {
-		fwdDot := p.VX*cos + p.VY*sin
-		sideX, sideY := -sin, cos
-		sideDot := p.VX*sideX + p.VY*sideY
-		// 前向き上限
-		if fwdDot > p.fwdCap {
-			fwdDot = p.fwdCap
+	// 速度の「大きさ」を機軸方向の動的キャップに合わせて制限する。
+	// 前進推力中は fwdCap、後進推力中は bckCap、非推力時は両者の大きい方を採用する。
+	// 機軸方向に加速しながら旋回すると、加速ベクトルが新しい機軸へ加わって速度の向きが
+	// 機軸寄りにずれ、それを毎フレーム最高速度に再正規化することで「最高速度を保ったまま
+	// 進行方向が徐々に機軸へ収束する」挙動になる。
+	// （旧実装は前後軸成分だけクランプし横成分を素通ししていたため、横成分が
+	//   累積して総速度が最高速度を越え、さらに機軸が慣性と 90° を越えると
+	//   負側 cap=0 で慣性が機軸の側面方向へ巻き取られる現象を招いていた。）
+	var spdCap float64
+	switch dirSign {
+	case 1:
+		spdCap = p.fwdCap
+	case -1:
+		spdCap = p.bckCap
+	default:
+		spdCap = math.Max(p.fwdCap, p.bckCap)
+	}
+	if spdCap > 0 {
+		speed := math.Hypot(p.VX, p.VY)
+		if speed > spdCap {
+			scale := spdCap / speed
+			p.VX *= scale
+			p.VY *= scale
 		}
-		// 後ろ向き上限（負方向に対する大きさ）
-		if -fwdDot > p.bckCap {
-			fwdDot = -p.bckCap
-		}
-		p.VX = fwdDot*cos + sideDot*sideX
-		p.VY = fwdDot*sin + sideDot*sideY
 	}
 
 	p.X += p.VX
