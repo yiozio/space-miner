@@ -265,6 +265,14 @@ func (e *Exploration) trySpawnAsteroid() {
 }
 
 func (e *Exploration) Update(d Director) error {
+	// HP 0 ならゲームオーバー画面を被せ、以降の処理はスキップする。
+	// GameOver が最上位にいる間 Exploration.Update は呼ばれないため二重 Push にならない。
+	if e.player.HP <= 0 {
+		e.player.ThrustState = entity.ThrustOff
+		d.Push(NewGameOver())
+		return nil
+	}
+
 	// ワープ中は専用アニメだけ進め、入力はすべて無視
 	if e.warpTimer > 0 {
 		e.tickWarp()
