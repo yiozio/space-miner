@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/yiozio/space-miner/internal/entity"
+	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
@@ -96,18 +97,17 @@ func (s *StarMap) Draw(dst *ebiten.Image, d Director) {
 	dst.Fill(theme.Background)
 
 	// ヘッダ
-	header := "STAR MAP"
+	sm := i18n.S().StarMap
 	headerScale := 2.5
-	hw, hh := ui.MeasureText(header, headerScale)
+	hw, hh := ui.MeasureText(sm.Header, headerScale)
 	headerY := 20.0
-	ui.DrawText(dst, header, (float64(sw)-hw)/2, headerY, headerScale, theme.Line)
+	ui.DrawText(dst, sm.Header, (float64(sw)-hw)/2, headerY, headerScale, theme.Line)
 
-	hint := "[ Arrow: Select   Enter: Warp   N / Tab / Esc: Close ]"
 	hintY := float64(sh) - 30
-	ui.DrawText(dst, hint, 20, hintY, 1.4, theme.LineDim)
+	ui.DrawText(dst, sm.Hint, 20, hintY, 1.4, theme.LineDim)
 
 	if len(s.targets) == 0 {
-		ui.DrawText(dst, "(no destinations available)", 20, headerY+hh+20, 1.4, theme.LineDim)
+		ui.DrawText(dst, sm.NoTargets, 20, headerY+hh+20, 1.4, theme.LineDim)
 		return
 	}
 
@@ -224,17 +224,16 @@ func (s *StarMap) Draw(dst *ebiten.Image, d Director) {
 	if !s.canWarp {
 		labelColor = theme.LineDim
 	}
-	label := fmt.Sprintf("> %s  (%s)", dest.Name, kindLabel(dest.Body.Kind))
+	label := fmt.Sprintf(sm.SelectFmt, dest.Name, kindLabel(dest.Body.Kind))
 	if dest.Name == s.currentMap {
-		label += "   [ CURRENT LOCATION ]"
+		label += "   " + sm.CurrentLocation
 	}
 	ui.DrawText(dst, label, margin, infoY, 1.6, labelColor)
-	zonesNote := fmt.Sprintf("ZONES %d", len(dest.Zones))
+	zonesNote := fmt.Sprintf(sm.ZonesFmt, len(dest.Zones))
 	ui.DrawText(dst, zonesNote, margin, infoY+30, 1.2, theme.LineDim)
 	if !s.canWarp {
-		warning := "WARP DRIVE NOT INSTALLED"
-		ww, _ := ui.MeasureText(warning, 1.4)
-		ui.DrawText(dst, warning, float64(sw)-margin-ww, infoY, 1.4, theme.Line)
+		ww, _ := ui.MeasureText(sm.WarpDriveMissing, 1.4)
+		ui.DrawText(dst, sm.WarpDriveMissing, float64(sw)-margin-ww, infoY, 1.4, theme.Line)
 	}
 }
 
@@ -271,13 +270,14 @@ func drawStarMapBody(dst *ebiten.Image, body *entity.Celestial, sx, sy float32, 
 
 // kindLabel は天体種別の表示名を返す。
 func kindLabel(k entity.CelestialKind) string {
+	sm := i18n.S().StarMap
 	switch k {
 	case entity.CelestialStar:
-		return "STAR"
+		return sm.KindStar
 	case entity.CelestialPlanet:
-		return "PLANET"
+		return sm.KindPlanet
 	case entity.CelestialMoon:
-		return "MOON"
+		return sm.KindMoon
 	}
 	return "?"
 }

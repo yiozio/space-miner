@@ -6,7 +6,15 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
+)
+
+// confirm スロットの index と意味の対応。Yes/No の判定にラベル文字列ではなく
+// この index を使うことで多言語化しても判定ロジックが変わらない。
+const (
+	confirmItemNo  = 0
+	confirmItemYes = 1
 )
 
 // ConfirmCallback は確認モーダルでユーザーが選択を確定したときに呼ばれる。
@@ -24,12 +32,14 @@ type Confirm struct {
 // NewConfirm はメッセージとコールバックから確認モーダルを生成する。
 // 既定カーソルは安全側の "No"。
 func NewConfirm(message string, onResult ConfirmCallback) *Confirm {
+	c := i18n.S().Common
 	return &Confirm{
 		message: message,
 		menu: &ui.Menu{
+			// 並びは confirmItemNo, confirmItemYes の順で、index と一致させる
 			Items: []*ui.MenuItem{
-				{Label: "No", Enabled: true},
-				{Label: "Yes", Enabled: true},
+				{Label: c.No, Enabled: true},
+				{Label: c.Yes, Enabled: true},
 			},
 		},
 		onResult: onResult,
@@ -42,11 +52,15 @@ func (c *Confirm) Update(d Director) error {
 		c.onResult(d, false)
 		return nil
 	}
+	// 言語切替に追従して Yes/No ラベルを毎フレーム再設定する
+	cs := i18n.S().Common
+	c.menu.Items[confirmItemNo].Label = cs.No
+	c.menu.Items[confirmItemYes].Label = cs.Yes
 	r := c.menu.Update()
 	if !r.Activated {
 		return nil
 	}
-	yes := c.menu.Items[c.menu.Cursor].Label == "Yes"
+	yes := c.menu.Cursor == confirmItemYes
 	d.Pop()
 	c.onResult(d, yes)
 	return nil

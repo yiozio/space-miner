@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/yiozio/space-miner/internal/dialog"
+	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
@@ -230,13 +231,14 @@ func (s *DialogScene) drawDialogBox(dst *ebiten.Image, theme *ui.Theme, sw, sh i
 	}
 
 	// 進行ヒント
+	dl := i18n.S().Dialog
 	if s.textFullyRevealed() && len(n.Choices) == 0 {
-		hint := "[ Enter / Space: Next   Esc: Skip ]"
+		hint := dl.HintNext
 		hw, _ := ui.MeasureText(hint, 1.0)
 		ui.DrawText(dst, hint, boxX+boxW-innerPad-hw, boxY+boxHeight-innerPad-12,
 			1.0, theme.LineDim)
 	} else if len(n.Choices) > 0 && s.textFullyRevealed() {
-		hint := "[ Up/Down: Move   Enter: Select ]"
+		hint := dl.HintChoiceMove
 		hw, _ := ui.MeasureText(hint, 1.0)
 		ui.DrawText(dst, hint, boxX+boxW-innerPad-hw, boxY+innerPad-2,
 			1.0, theme.LineDim)
@@ -260,7 +262,7 @@ func drawOpeningBackground(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		vector.StrokeCircle(dst, cx, cy, r, 1, theme.LineDim, true)
 	}
 
-	title := "PROLOGUE"
+	title := i18n.S().Dialog.OpeningHeader
 	tScale := 4.0
 	tw, _ := ui.MeasureText(title, tScale)
 	ui.DrawText(dst, title, float64(cx)-tw/2, 56, tScale, theme.Line)

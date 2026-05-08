@@ -10,6 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
+	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/save"
 	"github.com/yiozio/space-miner/internal/ui"
 )
@@ -134,7 +135,7 @@ func (s *SaveSlotPicker) activate(d Director) {
 		}
 		// 既存スロットへの上書きは確認モーダルを挟む
 		if s.metas[s.cursor] != nil {
-			d.Push(NewConfirm(fmt.Sprintf("Overwrite slot %d?", slot), func(d Director, yes bool) {
+			d.Push(NewConfirm(fmt.Sprintf(i18n.S().Save.OverwriteConfirm, slot), func(d Director, yes bool) {
 				if !yes {
 					return
 				}
@@ -176,10 +177,11 @@ func (s *SaveSlotPicker) Draw(dst *ebiten.Image, d Director) {
 		color.NRGBA{0, 0, 0, 220}, false)
 
 	// ヘッダ
+	st := i18n.S().Save
 	headerScale := 3.0
-	header := "SAVE"
+	header := st.HeaderSave
 	if s.mode == saveSlotModeLoad {
-		header = "LOAD"
+		header = st.HeaderLoad
 	}
 	hw, hh := ui.MeasureText(header, headerScale)
 	headerY := 36.0
@@ -199,8 +201,7 @@ func (s *SaveSlotPicker) Draw(dst *ebiten.Image, d Director) {
 	}
 
 	// フッタヒント
-	hint := "[ Up/Down: Move    Enter: Select    Esc: Back ]"
-	ui.DrawText(dst, hint, 20, float64(sh)-30, 1.4, theme.LineDim)
+	ui.DrawText(dst, st.Hint, 20, float64(sh)-30, 1.4, theme.LineDim)
 }
 
 func (s *SaveSlotPicker) drawSlot(dst *ebiten.Image, theme *ui.Theme, x, y, w, h float64, idx int) {
@@ -228,32 +229,34 @@ func (s *SaveSlotPicker) drawSlot(dst *ebiten.Image, theme *ui.Theme, x, y, w, h
 		subColor = theme.LineDim
 	}
 
-	slotLabel := fmt.Sprintf("Slot %d", slot)
+	st := i18n.S().Save
+	slotLabel := fmt.Sprintf(st.SlotLabel, slot)
 	if isAuto {
-		slotLabel = "Auto-save"
+		slotLabel = st.AutoSlotLabel
 	}
 	if disabled {
-		slotLabel += "  (read-only)"
+		slotLabel += "  " + st.ReadOnlySuffix
 	}
 	ui.DrawText(dst, slotLabel, x+16, y+12, 1.6, labelColor)
 
 	meta := s.metas[idx]
 	if meta == nil {
-		ui.DrawText(dst, "(empty)", x+16, y+44, 1.4, theme.LineDim)
+		ui.DrawText(dst, i18n.S().Common.Empty, x+16, y+44, 1.4, theme.LineDim)
 		return
 	}
 
 	// 1 行目: 保存時刻 + 経過時間
 	savedAt := meta.SavedAt.Local().Format("2006-01-02 15:04")
 	playtime := formatPlaytime(meta.Playtime)
-	ui.DrawText(dst, fmt.Sprintf("%s   PLAY %s", savedAt, playtime), x+16, y+44, 1.3, bodyColor)
+	playtimeText := fmt.Sprintf(st.PlayPrefix, playtime)
+	ui.DrawText(dst, savedAt+"   "+playtimeText, x+16, y+44, 1.3, bodyColor)
 
 	// 2 行目: 所持金 + 宙域名
 	mapName := meta.MapName
 	if mapName == "" {
-		mapName = "(deep space)"
+		mapName = st.DeepSpace
 	}
-	ui.DrawText(dst, fmt.Sprintf("CR %d   %s", meta.Credits, mapName), x+16, y+68, 1.3, subColor)
+	ui.DrawText(dst, fmt.Sprintf(st.CreditsPrefix, meta.Credits)+"   "+mapName, x+16, y+68, 1.3, subColor)
 }
 
 // formatPlaytime は秒数を "Hh MMm" 形式（>=1h）または "MMm SSs"（<1h）で表示する。

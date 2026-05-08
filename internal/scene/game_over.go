@@ -7,6 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
+	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
@@ -38,14 +39,13 @@ func (g *GameOver) Draw(dst *ebiten.Image, d Director) {
 		color.NRGBA{0, 0, 0, 220}, false)
 
 	// メインタイトル
+	s := i18n.S().GameOver
 	headerScale := 6.0
-	header := "GAME OVER"
-	hw, hh := ui.MeasureText(header, headerScale)
+	hw, hh := ui.MeasureText(s.Header, headerScale)
 	headerY := float64(sh)*0.36 - hh/2
-	ui.DrawText(dst, header, (float64(sw)-hw)/2, headerY, headerScale, theme.Line)
+	ui.DrawText(dst, s.Header, (float64(sw)-hw)/2, headerY, headerScale, theme.Line)
 
 	// 操作ヒント
-	hint := "[ Enter / Space: Return to Title ]"
-	hw2, _ := ui.MeasureText(hint, 1.5)
-	ui.DrawText(dst, hint, (float64(sw)-hw2)/2, headerY+hh+60, 1.5, theme.LineDim)
+	hw2, _ := ui.MeasureText(s.Hint, 1.5)
+	ui.DrawText(dst, s.Hint, (float64(sw)-hw2)/2, headerY+hh+60, 1.5, theme.LineDim)
 }

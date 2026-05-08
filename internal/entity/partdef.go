@@ -3,14 +3,13 @@ package entity
 // partdef.go はパーツバリアントの型・レジストリの実装のみを置く。
 // 個別バリアントの定義データ（性能・名前・価格）は data_parts.go を参照。
 
-// PartDef はパーツバリアントの定義。
+// PartDef はパーツバリアントの定義 (数値ステータスとカテゴリのみ保持)。
 // 同じ Kind を持つ複数の def を作り、性能（ステータス）を変えることでバリアントを表現する。
 // 描画は Kind に依存し、バリアント間で共通の見た目を使う。
+// 表示用の名前・説明は i18n.PartName / i18n.PartDesc から ID で引く。
 type PartDef struct {
 	ID    PartID
 	Kind  PartKind
-	Name  string
-	Desc  string
 	Price int
 
 	// Gun 用ステータス。Kind != PartGun の def では未使用。

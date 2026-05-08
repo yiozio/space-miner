@@ -11,6 +11,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/yiozio/space-miner/internal/entity"
+	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
@@ -83,16 +84,16 @@ func (s *StationTavern) Draw(dst *ebiten.Image, d Director) {
 		color.NRGBA{0, 0, 0, 220}, false)
 
 	// ヘッダ
+	tv := i18n.S().Tavern
 	headerScale := 3.0
-	header := "TAVERN"
-	hw, hh := ui.MeasureText(header, headerScale)
-	ui.DrawText(dst, header, (float64(sw)-hw)/2, 24, headerScale, theme.Line)
-	subtitle := s.stationName + " - Job Board"
+	hw, hh := ui.MeasureText(tv.Header, headerScale)
+	ui.DrawText(dst, tv.Header, (float64(sw)-hw)/2, 24, headerScale, theme.Line)
+	subtitle := s.stationName + " - " + tv.Subtitle
 	stw, _ := ui.MeasureText(subtitle, 1.4)
 	ui.DrawText(dst, subtitle, (float64(sw)-stw)/2, 24+hh+8, 1.4, theme.LineDim)
 
 	// クレジット表示
-	credits := fmt.Sprintf("CR %d", s.player.Credits)
+	credits := fmt.Sprintf(i18n.S().Save.CreditsPrefix, s.player.Credits)
 	cw, _ := ui.MeasureText(credits, 1.6)
 	ui.DrawText(dst, credits, float64(sw)-cw-30, 24, 1.6, theme.Line)
 
@@ -110,9 +111,7 @@ func (s *StationTavern) Draw(dst *ebiten.Image, d Director) {
 	}
 
 	// 操作ヒント
-	ui.DrawText(dst,
-		"[ Up/Down: Move    Enter: Clear    D: Discard    Esc: Leave ]",
-		20, float64(sh)-30, 1.4, theme.LineDim)
+	ui.DrawText(dst, tv.Hint, 20, float64(sh)-30, 1.4, theme.LineDim)
 }
 
 func (s *StationTavern) drawCard(dst *ebiten.Image, theme *ui.Theme, x, y, w, h float64, q *entity.Quest, focused bool) {
@@ -124,48 +123,48 @@ func (s *StationTavern) drawCard(dst *ebiten.Image, theme *ui.Theme, x, y, w, h 
 	}
 	vector.StrokeRect(dst, float32(x), float32(y), float32(w), float32(h), stroke, frame, false)
 
+	tv := i18n.S().Tavern
 	if q.IsEmpty() {
-		ui.DrawText(dst, "(empty)", x+16, y+(h-20)/2, 1.4, theme.LineDim)
+		ui.DrawText(dst, i18n.S().Common.Empty, x+16, y+(h-20)/2, 1.4, theme.LineDim)
 		return
 	}
 
 	// 種別タグ
-	kindLabel := "DELIVERY"
+	kindLabel := tv.KindDelivery
 	if q.Kind == entity.QuestKindBounty {
-		kindLabel = "BOUNTY"
+		kindLabel = tv.KindBounty
 	}
 	ui.DrawText(dst, kindLabel, x+16, y+12, 1.2, theme.LineDim)
 
 	// 説明
-	ui.DrawText(dst, q.Description(), x+16, y+34, 1.6, theme.Line)
+	ui.DrawText(dst, i18n.QuestDescription(q), x+16, y+34, 1.6, theme.Line)
 
 	// 進捗
 	cur, target := s.player.QuestProgress(q)
-	progress := fmt.Sprintf("PROGRESS %d / %d", cur, target)
+	progress := fmt.Sprintf(tv.ProgressFmt, cur, target)
 	progressColor := theme.LineDim
 	if cur >= target {
 		progressColor = theme.Line
-		progress += "   READY"
+		progress += "   " + tv.Ready
 	}
 	ui.DrawText(dst, progress, x+16, y+68, 1.3, progressColor)
 
 	// 報酬
-	rewardText := fmt.Sprintf("REWARD: %d cr", q.RewardCredits)
+	rewardText := fmt.Sprintf(tv.RewardFmt, q.RewardCredits)
 	if q.HasPartReward {
 		if def := entity.PartDefByID(q.RewardPart); def != nil {
-			rewardText += " + " + def.Name
+			rewardText += fmt.Sprintf(tv.BonusPartFmt, i18n.PartName(def.ID))
 		}
 	}
 	ui.DrawText(dst, rewardText, x+16, y+92, 1.3, theme.Line)
 
 	// 破棄コスト
-	discardText := fmt.Sprintf("DISCARD: %d cr", q.DiscardCost)
+	discardText := fmt.Sprintf(tv.DiscardFmt, q.DiscardCost)
 	dw, _ := ui.MeasureText(discardText, 1.2)
 	ui.DrawText(dst, discardText, x+w-dw-16, y+h-26, 1.2, theme.LineDim)
 
 	// 状態（積載超過のため受領できない場合）
 	if focused && cur >= target && !s.player.CanReceiveReward(q) {
-		warn := "(cargo full - can't receive part)"
-		ui.DrawText(dst, warn, x+16, y+h-26, 1.1, color.NRGBA{0xff, 0xa0, 0x80, 0xff})
+		ui.DrawText(dst, tv.CargoFullWarn, x+16, y+h-26, 1.1, color.NRGBA{0xff, 0xa0, 0x80, 0xff})
 	}
 }

@@ -3,14 +3,14 @@ package ui
 import (
 	"image/color"
 
+	"github.com/hajimehoshi/bitmapfont/v4"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
-	"golang.org/x/image/font/basicfont"
 )
 
 // defaultFace はテーマ非依存のテキスト描画用フォント。
-// レトロ感を出すためビットマップフォントを採用し、scale で拡大して使う。
-var defaultFace = text.NewGoXFace(basicfont.Face7x13)
+// CJK (日本語) も含む 12px ビットマップフォント。scale で拡大して使う。
+var defaultFace = text.NewGoXFace(bitmapfont.Face)
 
 // DrawText は (x, y) を左上として s を描画する。
 // scale は等倍からの拡大率。

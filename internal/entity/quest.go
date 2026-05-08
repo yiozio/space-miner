@@ -1,7 +1,6 @@
 package entity
 
 import (
-	"fmt"
 	"math/rand"
 )
 
@@ -42,17 +41,6 @@ type Quest struct {
 
 // IsEmpty は未生成スロット用の判定（ID が空文字）。
 func (q *Quest) IsEmpty() bool { return q.ID == "" }
-
-// Description は要求内容の表示文字列。
-func (q *Quest) Description() string {
-	switch q.Kind {
-	case QuestKindDelivery:
-		return fmt.Sprintf("Deliver %d %s", q.Amount, q.Resource.Info().Name)
-	case QuestKindBounty:
-		return fmt.Sprintf("Defeat %d pirates in %s", q.PirateTarget, q.MapName)
-	}
-	return "?"
-}
 
 // TavernBoard は 1 ステーションの 3 スロット掲示板。
 // 各スロットは Quest（IsEmpty()=true で空扱い）。

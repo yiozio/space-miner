@@ -9,7 +9,9 @@
       "Bash(grep -n \"^}$\\\\|^func \" /Users/yiozio/work/go/space-miner/internal/scene/exploration.go)",
       "Bash(grep *)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(go doc *)",
+      "Bash(go list *)"
     ]
   }
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/yiozio/space-miner/internal/dialog"
+	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/save"
 	"github.com/yiozio/space-miner/internal/ui"
 )
@@ -30,21 +31,36 @@ func NewTitle() *Title {
 	if hasSave {
 		cursor = titleItemContinue
 	}
-	return &Title{
+	tl := &Title{
 		menu: &ui.Menu{
 			Items: []*ui.MenuItem{
-				{Label: "Continue", Enabled: hasSave},
-				{Label: "New Game", Enabled: true},
-				{Label: "Load", Enabled: hasSave},
-				{Label: "Setting", Enabled: true},
-				{Label: "Quit Game", Enabled: true},
+				{Enabled: hasSave},
+				{Enabled: true},
+				{Enabled: hasSave},
+				{Enabled: true},
+				{Enabled: true},
 			},
 			Cursor: cursor,
 		},
 	}
+	tl.applyLabels()
+	return tl
+}
+
+// applyLabels はメニュー項目のラベルを現在言語で再設定する。
+// 設定画面で言語を切り替えた後でもタイトルへ戻った瞬間に反映できるよう、
+// Update 冒頭でも呼び直している。
+func (t *Title) applyLabels() {
+	s := i18n.S().Title
+	t.menu.Items[titleItemContinue].Label = s.Continue
+	t.menu.Items[titleItemNewGame].Label = s.NewGame
+	t.menu.Items[titleItemLoad].Label = s.Load
+	t.menu.Items[titleItemSetting].Label = s.Setting
+	t.menu.Items[titleItemQuit].Label = s.Quit
 }
 
 func (t *Title) Update(d Director) error {
+	t.applyLabels()
 	r := t.menu.Update()
 	if !r.Activated {
 		return nil
@@ -64,7 +80,7 @@ func (t *Title) Update(d Director) error {
 	case titleItemNewGame:
 		d.Replace(NewExploration())
 		// オープニング: 探索シーンの上に Push、閉じるとゲーム本編へ
-		d.Push(NewOpeningScene(&dialog.Opening))
+		d.Push(NewOpeningScene(dialog.Opening()))
 	case titleItemLoad:
 		if !save.AnyExists() {
 			return nil
@@ -83,11 +99,11 @@ func (t *Title) Draw(dst *ebiten.Image, d Director) {
 	dst.Fill(theme.Background)
 
 	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
+	s := i18n.S().Title
 	titleScale := 6.0
-	title := "SPACE  MINER"
-	tw, th := ui.MeasureText(title, titleScale)
+	tw, th := ui.MeasureText(s.Header, titleScale)
 	titleY := float64(sh) * 0.18
-	ui.DrawText(dst, title, (float64(sw)-tw)/2, titleY, titleScale, theme.Line)
+	ui.DrawText(dst, s.Header, (float64(sw)-tw)/2, titleY, titleScale, theme.Line)
 
 	menuScale := 2.0
 	maxW := t.menu.MaxLabelWidth(menuScale)
@@ -95,6 +111,5 @@ func (t *Title) Draw(dst *ebiten.Image, d Director) {
 	my := titleY + th + 80
 	t.menu.Draw(dst, theme, mx, my, menuScale)
 
-	hint := "[ Up/Down: Move    Enter: Select ]"
-	ui.DrawText(dst, hint, 20, float64(sh)-30, 1.5, theme.LineDim)
+	ui.DrawText(dst, s.Hint, 20, float64(sh)-30, 1.5, theme.LineDim)
 }

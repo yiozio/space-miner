@@ -1,6 +1,7 @@
 package scene
 
 import (
+	"fmt"
 	"image/color"
 	"math"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/yiozio/space-miner/internal/entity"
+	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
@@ -45,21 +47,21 @@ func (w *WorldMapView) Draw(dst *ebiten.Image, d Director) {
 	dst.Fill(theme.Background)
 
 	// ヘッダ（FullMap 名があれば併記）
-	header := "WORLD MAP"
+	wm := i18n.S().Worldmap
+	header := wm.Header
 	if w.fmap != nil && w.fmap.Name != "" {
-		header = "WORLD MAP - " + w.fmap.Name
+		header = fmt.Sprintf(wm.HeaderFmt, w.fmap.Name)
 	}
 	headerScale := 2.5
 	hw, hh := ui.MeasureText(header, headerScale)
 	headerY := 20.0
 	ui.DrawText(dst, header, (float64(sw)-hw)/2, headerY, headerScale, theme.Line)
 
-	hint := "[ M / Tab / Esc: Close ]"
 	hintY := float64(sh) - 30
-	ui.DrawText(dst, hint, 20, hintY, 1.5, theme.LineDim)
+	ui.DrawText(dst, wm.Hint, 20, hintY, 1.5, theme.LineDim)
 
 	if w.fmap == nil {
-		ui.DrawText(dst, "(NOT IN ANY FULL MAP)", 20, headerY+hh+20, 1.5, theme.LineDim)
+		ui.DrawText(dst, wm.OutOfRange, 20, headerY+hh+20, 1.5, theme.LineDim)
 		return
 	}
 
@@ -119,7 +121,7 @@ func (w *WorldMapView) Draw(dst *ebiten.Image, d Director) {
 		vector.DrawFilledCircle(dst, psx, psy, pr, dim, true)
 		vector.StrokeCircle(dst, psx, psy, pr, 1.5, pirateColor, true)
 		// ラベル
-		label := "HOSTILE"
+		label := wm.Hostile
 		lw, lh := ui.MeasureText(label, 1.2)
 		ui.DrawText(dst, label, float64(psx)-lw/2, float64(psy)-lh/2, 1.2, pirateColor)
 	}
@@ -131,7 +133,7 @@ func (w *WorldMapView) Draw(dst *ebiten.Image, d Director) {
 		}
 		sx, sy := toScreen(s.X, s.Y)
 		drawDiamond(dst, sx, sy, 6, 1.5, theme.Line)
-		ui.DrawText(dst, "STATION", float64(sx)+10, float64(sy)-6, 1.0, theme.LineDim)
+		ui.DrawText(dst, wm.Station, float64(sx)+10, float64(sy)-6, 1.0, theme.LineDim)
 	}
 
 	// 自機現在位置（FullMap 内のときのみ）。向きを示す二等辺三角形で描画する
@@ -182,7 +184,7 @@ func zoneLabel(z *entity.ResourceZone) string {
 		if i > 0 {
 			s += "+"
 		}
-		s += m.Resource.Info().Name
+		s += i18n.ResourceName(m.Resource)
 	}
 	return s
 }

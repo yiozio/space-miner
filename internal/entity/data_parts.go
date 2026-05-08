@@ -39,7 +39,6 @@ func init() {
 	// 通常の Thruster が搭載されている場合、この値は使われない（player.go thrusterStats 参照）。
 	registerPartDef(&PartDef{
 		ID: PartIDCockpit, Kind: PartCockpit,
-		Name: "Cockpit", Desc: "Pilot seat. Required. Provides minimal thrust if no thrusters are installed.",
 		Price:               0,
 		ThrustAccel:         0.05,
 		ThrustMaxSpeed:      2,
@@ -54,7 +53,6 @@ func init() {
 	// Starter は最初期支給品。性能は最弱で、買い替え前提の入門用。
 	registerPartDef(&PartDef{
 		ID: PartIDGunStarter, Kind: PartGun,
-		Name: "Starter Gun", Desc: "Factory-issue popgun. Low damage, slow rate.",
 		Price:           40,
 		GunDamage:       1,
 		GunCooldown:     20,
@@ -66,7 +64,6 @@ func init() {
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDGunMkI, Kind: PartGun,
-		Name: "Gun Mk-I", Desc: "Standard forward gun.",
 		Price:           80,
 		GunDamage:       1,
 		GunCooldown:     12,
@@ -78,7 +75,6 @@ func init() {
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDGunMkII, Kind: PartGun,
-		Name: "Gun Mk-II", Desc: "Heavy gun. High damage, slow rate.",
 		Price:           220,
 		GunDamage:       3,
 		GunCooldown:     24,
@@ -90,7 +86,6 @@ func init() {
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDGunRapid, Kind: PartGun,
-		Name: "Rapid Gun", Desc: "Light gun. Fast rate, low damage.",
 		Price:           140,
 		GunDamage:       1,
 		GunCooldown:     6,
@@ -103,7 +98,6 @@ func init() {
 	// Plasma Cannon: 大きなボール弾、低速・高威力、着弾エフェクトあり
 	registerPartDef(&PartDef{
 		ID: PartIDGunPlasma, Kind: PartGun,
-		Name: "Plasma Cannon", Desc: "Slow plasma orbs. High damage with impact burst.",
 		Price:           320,
 		GunDamage:       4,
 		GunCooldown:     30,
@@ -116,7 +110,6 @@ func init() {
 	// Laser Pulse: 細く長いビーム、高速、着弾エフェクトあり
 	registerPartDef(&PartDef{
 		ID: PartIDGunLaser, Kind: PartGun,
-		Name: "Laser Pulse", Desc: "Pinpoint laser pulses. Very fast, light damage.",
 		Price:           260,
 		GunDamage:       2,
 		GunCooldown:     14,
@@ -130,7 +123,6 @@ func init() {
 	// --- Thruster ---
 	registerPartDef(&PartDef{
 		ID: PartIDThrusterStd, Kind: PartThruster,
-		Name: "Thruster", Desc: "Standard engine.",
 		Price:               120,
 		ThrustAccel:         0.15,
 		ThrustMaxSpeed:      8.0,
@@ -141,7 +133,6 @@ func init() {
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDThrusterLight, Kind: PartThruster,
-		Name: "Light Thruster", Desc: "Compact engine. Lower thrust, fuel-efficient.",
 		Price:               90,
 		ThrustAccel:         0.10,
 		ThrustMaxSpeed:      6.5,
@@ -152,7 +143,6 @@ func init() {
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDThrusterHeavy, Kind: PartThruster,
-		Name: "Heavy Thruster", Desc: "High-output engine. Strong thrust, hungry.",
 		Price:               220,
 		ThrustAccel:         0.22,
 		ThrustMaxSpeed:      10.0,
@@ -165,35 +155,30 @@ func init() {
 	// --- ユーティリティ系（現状は単一バリアント） ---
 	registerPartDef(&PartDef{
 		ID: PartIDFuelStd, Kind: PartFuel,
-		Name: "Fuel Tank", Desc: "Standard fuel tank.",
 		Price:        70,
 		FuelCapacity: 100,
 		Weight:       3,
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDCargoStd, Kind: PartCargo,
-		Name: "Cargo", Desc: "Resource storage. Increases cargo capacity.",
 		Price:         60,
 		CargoCapacity: 50,
 		Weight:        4,
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDArmorStd, Kind: PartArmor,
-		Name: "Armor", Desc: "Hardened plating. Increases max HP.",
 		Price:   100,
 		ArmorHP: 25,
 		Weight:  7,
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDShieldStd, Kind: PartShield,
-		Name: "Shield", Desc: "Shield generator. Absorbs damage; regenerates after 2s without damage.",
 		Price:    150,
 		ShieldHP: 50,
 		Weight:   5,
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDAutoAimStd, Kind: PartAutoAim,
-		Name: "Auto-Aim", Desc: "Beams the last-hit asteroid grid by grid. Damage over time.",
 		Price:        250,
 		Weight:       3,
 		AutoAimRange: 500,
@@ -201,7 +186,6 @@ func init() {
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDWarpStd, Kind: PartWarp,
-		Name: "Warp", Desc: "Warp drive.",
 		Price:  400,
 		Weight: 8,
 	})

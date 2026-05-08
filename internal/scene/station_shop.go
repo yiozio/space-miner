@@ -9,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/yiozio/space-miner/internal/entity"
+	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
@@ -75,10 +76,11 @@ func NewStationShop(p *entity.Player) *StationShop {
 }
 
 // itemFromDef は PartDef から店舗用 shopItem を組み立てる。
+// 表示文字列は i18n から取得する（数値 (Price 等) は data_*.go を参照）。
 func itemFromDef(d *entity.PartDef) shopItem {
 	return shopItem{
-		Name:        d.Name,
-		Description: d.Desc,
+		Name:        i18n.PartName(d.ID),
+		Description: i18n.PartDesc(d.ID),
 		Price:       d.Price,
 		PartID:      d.ID,
 		PartKind:    d.Kind,
@@ -92,16 +94,17 @@ func (ss *StationShop) refreshPlayerSlots() {
 		ss.playerSlots[i] = shopSlot{}
 	}
 	idx := 0
+	sh := i18n.S().Shop
 	for _, rt := range entity.AllResourceTypes() {
 		qty := ss.player.Inventory[rt]
 		if qty <= 0 || idx >= shopSlotCount {
 			continue
 		}
-		info := rt.Info()
+		name := i18n.ResourceName(rt)
 		ss.playerSlots[idx] = shopSlot{
 			Item: shopItem{
-				Name:        info.Name,
-				Description: info.Name + " ore. Mining material.",
+				Name:        name,
+				Description: fmt.Sprintf(sh.OreDescFmt, name),
 				Price:       rt.Price(),
 				IsResource:  true,
 				ResType:     rt,
@@ -116,7 +119,7 @@ func (ss *StationShop) refreshPlayerSlots() {
 			continue
 		}
 		item := itemFromDef(def)
-		item.Description = def.Name + " (spare)."
+		item.Description = fmt.Sprintf(sh.SpareFmt, i18n.PartName(def.ID))
 		ss.playerSlots[idx] = shopSlot{Item: item, Quantity: qty}
 		idx++
 	}
@@ -233,7 +236,7 @@ func (ss *StationShop) Draw(dst *ebiten.Image, d Director) {
 		color.NRGBA{0, 0, 0, 220}, false)
 
 	headerScale := 3.0
-	header := "PARTS SHOP"
+	header := i18n.S().Station.Shop
 	hw, hh := ui.MeasureText(header, headerScale)
 	ui.DrawText(dst, header, (float64(sw)-hw)/2, 24, headerScale, theme.Line)
 
@@ -249,16 +252,16 @@ func (ss *StationShop) Draw(dst *ebiten.Image, d Director) {
 	playerX := summaryX + summaryW + gap
 	infoX := playerX + float64(shopSideWidth) + gap
 
-	ui.DrawText(dst, "SHOP", shopX, sideY-22, 1.6, theme.LineDim)
-	ui.DrawText(dst, "INVENTORY", playerX, sideY-22, 1.6, theme.LineDim)
+	sh2 := i18n.S().Shop
+	ui.DrawText(dst, sh2.Header, shopX, sideY-22, 1.6, theme.LineDim)
+	ui.DrawText(dst, sh2.Inventory, playerX, sideY-22, 1.6, theme.LineDim)
 
 	ss.drawGrid(dst, theme, shopX, sideY, ss.shopSlots[:], ss.side == 0)
 	ss.drawGrid(dst, theme, playerX, sideY, ss.playerSlots[:], ss.side == 1)
 	ss.drawSummary(dst, theme, summaryX, sideY)
 	ss.drawInfo(dst, theme, infoX, sideY, infoW)
 
-	ui.DrawText(dst, "[ WASD/Arrows: Move    Tab: Switch Side    Enter/Space: Buy/Sell    Esc: Leave ]",
-		20, float64(sh)-30, 1.4, theme.LineDim)
+	ui.DrawText(dst, sh2.Hint, 20, float64(sh)-30, 1.4, theme.LineDim)
 }
 
 func (ss *StationShop) drawGrid(dst *ebiten.Image, theme *ui.Theme, x, y float64, slots []shopSlot, focused bool) {
@@ -300,26 +303,28 @@ func (ss *StationShop) drawSlotIcon(dst *ebiten.Image, theme *ui.Theme, cx, cy, 
 }
 
 func (ss *StationShop) drawSummary(dst *ebiten.Image, theme *ui.Theme, x, y float64) {
-	ui.DrawText(dst, "SESSION", x, y, 1.6, theme.Line)
+	sh := i18n.S().Shop
+	ui.DrawText(dst, sh.Session, x, y, 1.6, theme.Line)
 	lineY := y + 32
-	ui.DrawText(dst, fmt.Sprintf("BUY  %d", ss.sessionBuyCount), x, lineY, 1.4, theme.LineDim)
+	ui.DrawText(dst, fmt.Sprintf(sh.BuyCountFmt, ss.sessionBuyCount), x, lineY, 1.4, theme.LineDim)
 	lineY += 24
-	ui.DrawText(dst, fmt.Sprintf("SELL %d", ss.sessionSellCount), x, lineY, 1.4, theme.LineDim)
+	ui.DrawText(dst, fmt.Sprintf(sh.SellCountFmt, ss.sessionSellCount), x, lineY, 1.4, theme.LineDim)
 	lineY += 36
 	sign := "+"
 	if ss.sessionNet < 0 {
 		sign = ""
 	}
-	ui.DrawText(dst, fmt.Sprintf("NET %s%d", sign, ss.sessionNet), x, lineY, 1.7, theme.Line)
+	ui.DrawText(dst, fmt.Sprintf(sh.NetFmt, sign, ss.sessionNet), x, lineY, 1.7, theme.Line)
 	lineY += 50
-	ui.DrawText(dst, fmt.Sprintf("CR %d", ss.player.Credits), x, lineY, 1.4, theme.Line)
+	ui.DrawText(dst, fmt.Sprintf(sh.CreditsFmt, ss.player.Credits), x, lineY, 1.4, theme.Line)
 }
 
 func (ss *StationShop) drawInfo(dst *ebiten.Image, theme *ui.Theme, x, y, _ float64) {
-	ui.DrawText(dst, "INFO", x, y, 1.6, theme.Line)
+	sh := i18n.S().Shop
+	ui.DrawText(dst, sh.Info, x, y, 1.6, theme.Line)
 	slot := ss.currentSlot()
 	if slot.Quantity == 0 {
-		ui.DrawText(dst, "(empty)", x, y+34, 1.3, theme.LineDim)
+		ui.DrawText(dst, i18n.S().Common.Empty, x, y+34, 1.3, theme.LineDim)
 		return
 	}
 	lineY := y + 34
@@ -327,16 +332,16 @@ func (ss *StationShop) drawInfo(dst *ebiten.Image, theme *ui.Theme, x, y, _ floa
 	lineY += 32
 	var action string
 	if ss.side == 0 {
-		action = fmt.Sprintf("BUY %d cr", slot.Item.Price)
+		action = fmt.Sprintf(sh.BuyPriceFmt, slot.Item.Price)
 	} else {
-		action = fmt.Sprintf("SELL %d cr", slot.Item.Price)
+		action = fmt.Sprintf(sh.SellPriceFmt, slot.Item.Price)
 	}
 	ui.DrawText(dst, action, x, lineY, 1.4, theme.Line)
 	lineY += 32
 	ui.DrawText(dst, slot.Item.Description, x, lineY, 1.1, theme.LineDim)
 	// 単位重量（カーゴ計算用）
 	lineY += 22
-	ui.DrawText(dst, fmt.Sprintf("WEIGHT %.1f", itemUnitWeight(slot.Item)), x, lineY, 1.1, theme.LineDim)
+	ui.DrawText(dst, fmt.Sprintf(sh.WeightFmt, itemUnitWeight(slot.Item)), x, lineY, 1.1, theme.LineDim)
 	// パーツの場合は性能ステータスを補足表示
 	if !slot.Item.IsResource {
 		if d := entity.PartDefByID(slot.Item.PartID); d != nil {
@@ -351,51 +356,52 @@ func (ss *StationShop) drawInfo(dst *ebiten.Image, theme *ui.Theme, x, y, _ floa
 
 // partStatLines は def の Kind に応じたステータス文字列を返す。
 func partStatLines(d *entity.PartDef) []string {
+	sh := i18n.S().Shop
 	switch d.Kind {
 	case entity.PartGun:
-		style := "TRAIL"
+		style := sh.BulletStyleTrail
 		switch d.GunBulletStyle {
 		case entity.BulletStyleBall:
-			style = "BALL"
+			style = sh.BulletStyleBall
 		case entity.BulletStyleLaser:
-			style = "LASER"
+			style = sh.BulletStyleLaser
 		}
 		impact := ""
 		if d.GunBulletImpact {
-			impact = " + IMPACT FX"
+			impact = sh.ImpactFXSuffix
 		}
 		return []string{
-			fmt.Sprintf("DMG %d   COOLDOWN %df", d.GunDamage, d.GunCooldown),
-			fmt.Sprintf("BULLET SPD %.1f", d.GunBulletSpeed),
-			fmt.Sprintf("STYLE %s%s", style, impact),
+			fmt.Sprintf(sh.GunDmgCdFmt, d.GunDamage, d.GunCooldown),
+			fmt.Sprintf(sh.GunBulletSpdFmt, d.GunBulletSpeed),
+			fmt.Sprintf(sh.GunStyleFmt, style, impact),
 		}
 	case entity.PartThruster:
 		return []string{
-			fmt.Sprintf("ACCEL %.2f   MAX SPD %.1f", d.ThrustAccel, d.ThrustMaxSpeed),
-			fmt.Sprintf("BOOST x%.1f   MAX %.1f", d.ThrustBoostAccelMul, d.ThrustBoostMaxSpeed),
-			fmt.Sprintf("FUEL/F %.2f", d.ThrustBoostFuelCost),
+			fmt.Sprintf(sh.ThrusterAccelFmt, d.ThrustAccel, d.ThrustMaxSpeed),
+			fmt.Sprintf(sh.ThrusterBoostFmt, d.ThrustBoostAccelMul, d.ThrustBoostMaxSpeed),
+			fmt.Sprintf(sh.ThrusterFuelFmt, d.ThrustBoostFuelCost),
 		}
 	case entity.PartFuel:
 		return []string{
-			fmt.Sprintf("FUEL CAP %.0f", d.FuelCapacity),
+			fmt.Sprintf(sh.FuelCapFmt, d.FuelCapacity),
 		}
 	case entity.PartArmor:
 		return []string{
-			fmt.Sprintf("HP +%d", d.ArmorHP),
+			fmt.Sprintf(sh.ArmorHPFmt, d.ArmorHP),
 		}
 	case entity.PartShield:
 		return []string{
-			fmt.Sprintf("SHIELD HP +%d", d.ShieldHP),
-			"REGEN AFTER 2s NO DMG",
+			fmt.Sprintf(sh.ShieldHPFmt, d.ShieldHP),
+			sh.ShieldRegenNote,
 		}
 	case entity.PartCargo:
 		return []string{
-			fmt.Sprintf("CARGO CAP +%.0f", d.CargoCapacity),
+			fmt.Sprintf(sh.CargoCapFmt, d.CargoCapacity),
 		}
 	case entity.PartAutoAim:
 		return []string{
-			fmt.Sprintf("RANGE %.0f   DPS %.1f", d.AutoAimRange, d.AutoAimDPS),
-			"BEAMS LAST-HIT ASTEROID",
+			fmt.Sprintf(sh.AutoAimRangeFmt, d.AutoAimRange, d.AutoAimDPS),
+			sh.AutoAimNote,
 		}
 	}
 	return nil

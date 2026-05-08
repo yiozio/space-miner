@@ -7,8 +7,8 @@ import "image/color"
 
 // ResourceInfo は資源種別ごとの視覚＆HP情報。
 // Weight は所持時の単位重量（カーゴ計算用）。
+// 表示名は i18n.ResourceName で引く。
 type ResourceInfo struct {
-	Name   string
 	Color  color.NRGBA
 	MaxHP  int
 	Weight float64

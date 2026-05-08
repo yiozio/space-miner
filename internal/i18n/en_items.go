@@ -1,0 +1,37 @@
+package i18n
+
+import "github.com/yiozio/space-miner/internal/entity"
+
+// newENItems は英語のアイテム文字列セットを返す。
+func newENItems() ItemsStrings {
+	return ItemsStrings{
+		Parts: map[int]ItemText{
+			int(entity.PartIDCockpit):       {Name: "Cockpit", Desc: "Pilot seat. Required. Provides minimal thrust if no thrusters are installed."},
+			int(entity.PartIDGunStarter):    {Name: "Starter Gun", Desc: "Factory-issue popgun. Low damage, slow rate."},
+			int(entity.PartIDGunMkI):        {Name: "Gun Mk-I", Desc: "Standard forward gun."},
+			int(entity.PartIDGunMkII):       {Name: "Gun Mk-II", Desc: "Heavy gun. High damage, slow rate."},
+			int(entity.PartIDGunRapid):      {Name: "Rapid Gun", Desc: "Light gun. Fast rate, low damage."},
+			int(entity.PartIDGunPlasma):     {Name: "Plasma Cannon", Desc: "Slow plasma orbs. High damage with impact burst."},
+			int(entity.PartIDGunLaser):      {Name: "Laser Pulse", Desc: "Pinpoint laser pulses. Very fast, light damage."},
+			int(entity.PartIDThrusterStd):   {Name: "Thruster", Desc: "Standard engine."},
+			int(entity.PartIDThrusterLight): {Name: "Light Thruster", Desc: "Compact engine. Lower thrust, fuel-efficient."},
+			int(entity.PartIDThrusterHeavy): {Name: "Heavy Thruster", Desc: "High-output engine. Strong thrust, hungry."},
+			int(entity.PartIDFuelStd):       {Name: "Fuel Tank", Desc: "Standard fuel tank."},
+			int(entity.PartIDCargoStd):      {Name: "Cargo", Desc: "Resource storage. Increases cargo capacity."},
+			int(entity.PartIDArmorStd):      {Name: "Armor", Desc: "Hardened plating. Increases max HP."},
+			int(entity.PartIDShieldStd):     {Name: "Shield", Desc: "Shield generator. Absorbs damage; regenerates after 2s without damage."},
+			int(entity.PartIDAutoAimStd):    {Name: "Auto-Aim", Desc: "Beams the last-hit asteroid grid by grid. Damage over time."},
+			int(entity.PartIDWarpStd):       {Name: "Warp", Desc: "Warp drive."},
+		},
+		Resources: map[int]ItemText{
+			int(entity.ResourceIron):   {Name: "IRON"},
+			int(entity.ResourceBronze): {Name: "BRONZE"},
+			int(entity.ResourceIce):    {Name: "ICE"},
+		},
+		PiratePatterns: map[int]ItemText{
+			int(entity.PiratePatternScout):   {Name: "Scout"},
+			int(entity.PiratePatternBrawler): {Name: "Brawler"},
+			int(entity.PiratePatternCruiser): {Name: "Cruiser"},
+		},
+	}
+}

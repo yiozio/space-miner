@@ -28,7 +28,6 @@ const (
 //   - PartDropRate の確率で PartDrops からランダムに 1 つパーツ pickup を出す
 type PiratePattern struct {
 	ID    PiratePatternID
-	Name  string
 	Parts []Part
 	MaxHP int
 
@@ -46,8 +45,7 @@ type PiratePattern struct {
 
 var piratePatterns = map[PiratePatternID]*PiratePattern{
 	PiratePatternScout: {
-		ID:   PiratePatternScout,
-		Name: "Scout",
+		ID: PiratePatternScout,
 		Parts: []Part{
 			{DefID: PartIDCockpit, GX: 0, GY: 0},
 			{DefID: PartIDGunStarter, GX: 0, GY: -1},
@@ -65,8 +63,7 @@ var piratePatterns = map[PiratePatternID]*PiratePattern{
 		PartDrops:      []PartID{PartIDGunStarter, PartIDThrusterLight},
 	},
 	PiratePatternBrawler: {
-		ID:   PiratePatternBrawler,
-		Name: "Brawler",
+		ID: PiratePatternBrawler,
 		Parts: []Part{
 			{DefID: PartIDCockpit, GX: 0, GY: 0},
 			{DefID: PartIDGunMkI, GX: -1, GY: 0},
@@ -86,8 +83,7 @@ var piratePatterns = map[PiratePatternID]*PiratePattern{
 		PartDrops:      []PartID{PartIDGunMkI, PartIDArmorStd, PartIDThrusterStd},
 	},
 	PiratePatternCruiser: {
-		ID:   PiratePatternCruiser,
-		Name: "Cruiser",
+		ID: PiratePatternCruiser,
 		Parts: []Part{
 			{DefID: PartIDCockpit, GX: 0, GY: 0},
 			{DefID: PartIDGunMkII, GX: -1, GY: -1},

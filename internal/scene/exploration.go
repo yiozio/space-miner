@@ -13,6 +13,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/yiozio/space-miner/internal/dialog"
 	"github.com/yiozio/space-miner/internal/entity"
+	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/save"
 	"github.com/yiozio/space-miner/internal/ui"
 )
@@ -809,7 +810,7 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 
 	// ドック近接プロンプト
 	if e.activeDock != nil {
-		prompt := "[ Space ] DOCK"
+		prompt := i18n.S().HUD.DockPrompt
 		promptScale := 1.6
 		pw, _ := ui.MeasureText(prompt, promptScale)
 		ui.DrawText(dst, prompt, psx-pw/2, psy+72, promptScale, theme.Line)
@@ -825,8 +826,9 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 }
 
 func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
+	hud := i18n.S().HUD
 	// ステータス: HP / シールド / FUEL は自機下部のバーで表示するためここから除外。
-	statusLine := fmt.Sprintf("CARGO %.0f/%.0f   CR %d",
+	statusLine := fmt.Sprintf(hud.CargoFmt,
 		e.player.CargoLoad(), e.player.MaxCargo,
 		e.player.Credits)
 	ui.DrawText(dst, statusLine, 20, 20, 1.5, theme.Line)
@@ -834,14 +836,16 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 	// インベントリ
 	inv := e.player.Inventory
 	ui.DrawText(dst,
-		fmt.Sprintf("IRON %d   BRONZE %d   ICE %d",
-			inv[entity.ResourceIron], inv[entity.ResourceBronze], inv[entity.ResourceIce]),
+		fmt.Sprintf(hud.InvFmt,
+			i18n.ResourceName(entity.ResourceIron), inv[entity.ResourceIron],
+			i18n.ResourceName(entity.ResourceBronze), inv[entity.ResourceBronze],
+			i18n.ResourceName(entity.ResourceIce), inv[entity.ResourceIce]),
 		20, 50, 1.5, theme.Line)
 
 	// 速度・座標（デバッグ補助）
 	speed := math.Hypot(e.player.VX, e.player.VY)
 	ui.DrawText(dst,
-		fmt.Sprintf("SPEED %.2f   POS %.0f, %.0f", speed, e.player.X, e.player.Y),
+		fmt.Sprintf(hud.SpeedPosFmt, speed, e.player.X, e.player.Y),
 		20, 80, 1.2, theme.LineDim)
 
 	// ミニマップ
@@ -939,26 +943,27 @@ func (e *Exploration) buildControlsHelp() string {
 	if hasBck {
 		thrustKeys += "S"
 	}
+	hud := i18n.S().HUD
 	if thrustKeys != "" {
-		parts = append(parts, thrustKeys+": Thrust")
+		parts = append(parts, thrustKeys+": "+hud.HelpThrust)
 	}
-	parts = append(parts, "AD: Rotate")
+	parts = append(parts, hud.HelpRotate)
 	if e.player.MaxFuel > 0 {
-		parts = append(parts, "Shift: Boost")
+		parts = append(parts, hud.HelpBoost)
 	}
 	switch {
 	case hasGun && e.activeDock != nil:
-		parts = append(parts, "Space: Fire/Dock")
+		parts = append(parts, hud.HelpFireDock)
 	case hasGun:
-		parts = append(parts, "Space: Fire")
+		parts = append(parts, hud.HelpFire)
 	case e.activeDock != nil:
-		parts = append(parts, "Space: Dock")
+		parts = append(parts, hud.HelpDock)
 	}
-	parts = append(parts, "M: Map")
+	parts = append(parts, hud.HelpMap)
 	if e.player.HasWarpDrive() {
-		parts = append(parts, "N: Warp")
+		parts = append(parts, hud.HelpWarp)
 	}
-	parts = append(parts, "Esc: Menu")
+	parts = append(parts, hud.HelpMenu)
 	return "[ " + strings.Join(parts, "    ") + " ]"
 }
 

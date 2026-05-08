@@ -6,6 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/save"
 	"github.com/yiozio/space-miner/internal/ui"
 )
@@ -29,18 +30,30 @@ type Menu struct {
 // Save / Load 項目は 3 スロットの選択画面 (SaveSlotPicker) を開く。
 // Load はいずれかのスロットにセーブが存在するときだけ有効。
 func NewMenu(ctx save.Context) *Menu {
-	return &Menu{
+	m := &Menu{
 		saveCtx: ctx,
 		menu: &ui.Menu{
 			Items: []*ui.MenuItem{
-				{Label: "Save", Enabled: true},
-				{Label: "Load", Enabled: save.AnyExists()},
-				{Label: "Setting", Enabled: true},
-				{Label: "Quit To Title", Enabled: true},
+				{Enabled: true},
+				{Enabled: save.AnyExists()},
+				{Enabled: true},
+				{Enabled: true},
 			},
 			Cursor: menuItemSetting,
 		},
 	}
+	m.applyLabels()
+	return m
+}
+
+// applyLabels はメニュー項目のラベルを現在言語で再設定する。
+// 言語切替直後にも反映できるよう Update 冒頭でも呼ぶ。
+func (m *Menu) applyLabels() {
+	s := i18n.S().Menu
+	m.menu.Items[menuItemSave].Label = s.Save
+	m.menu.Items[menuItemLoad].Label = s.Load
+	m.menu.Items[menuItemSetting].Label = s.Setting
+	m.menu.Items[menuItemQuitTitle].Label = s.QuitToTitle
 }
 
 func (m *Menu) Update(d Director) error {
@@ -50,6 +63,7 @@ func (m *Menu) Update(d Director) error {
 	}
 	// スロット選択画面から戻ってきた場合に Load の有効状態を毎フレーム再評価する。
 	// 早期 return で見落とすことが無いよう、メニュー入力処理より前に行う。
+	m.applyLabels()
 	m.menu.Items[menuItemLoad].Enabled = save.AnyExists()
 	r := m.menu.Update()
 	if !r.Activated {
@@ -66,7 +80,7 @@ func (m *Menu) Update(d Director) error {
 	case menuItemSetting:
 		d.Push(NewSettings(d.Theme()))
 	case menuItemQuitTitle:
-		d.Push(NewConfirm("Quit to title?", func(d Director, yes bool) {
+		d.Push(NewConfirm(i18n.S().Menu.QuitConfirm, func(d Director, yes bool) {
 			if !yes {
 				return
 			}
@@ -86,11 +100,11 @@ func (m *Menu) Draw(dst *ebiten.Image, d Director) {
 		color.NRGBA{0, 0, 0, 180}, false)
 
 	// ヘッダ
+	s := i18n.S().Menu
 	headerScale := 4.0
-	header := "MENU"
-	hw, hh := ui.MeasureText(header, headerScale)
+	hw, hh := ui.MeasureText(s.Header, headerScale)
 	headerY := float64(sh) * 0.22
-	ui.DrawText(dst, header, (float64(sw)-hw)/2, headerY, headerScale, theme.Line)
+	ui.DrawText(dst, s.Header, (float64(sw)-hw)/2, headerY, headerScale, theme.Line)
 
 	// メニュー
 	menuScale := 2.0
@@ -100,6 +114,5 @@ func (m *Menu) Draw(dst *ebiten.Image, d Director) {
 	m.menu.Draw(dst, theme, mx, my, menuScale)
 
 	// 操作ヒント
-	ui.DrawText(dst, "[ Up/Down: Move    Enter: Select    Esc: Close ]",
-		20, float64(sh)-30, 1.5, theme.LineDim)
+	ui.DrawText(dst, s.Hint, 20, float64(sh)-30, 1.5, theme.LineDim)
 }

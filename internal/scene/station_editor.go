@@ -9,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/yiozio/space-miner/internal/entity"
+	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
@@ -178,9 +179,9 @@ func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
 		color.NRGBA{0, 0, 0, 220}, false)
 
 	headerScale := 3.0
-	header := "SHIP EDITOR"
-	hw, _ := ui.MeasureText(header, headerScale)
-	ui.DrawText(dst, header, (float64(sw)-hw)/2, 24, headerScale, theme.Line)
+	ed := i18n.S().Editor
+	hw, _ := ui.MeasureText(ed.Header, headerScale)
+	ui.DrawText(dst, ed.Header, (float64(sw)-hw)/2, 24, headerScale, theme.Line)
 
 	// レイアウト
 	gridPx := float64(editorGridSize)*editorCellSize + float64(editorGridSize-1)*editorCellGap
@@ -196,9 +197,7 @@ func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
 	se.drawPalette(dst, theme, paletteX, contentY)
 	se.drawCursorInfo(dst, theme, gridStartX, contentY+gridPx+24)
 
-	ui.DrawText(dst,
-		"[ WASD/Arrows: Move   1-9: Quick Select   Q/E: Cycle Palette   R: Rotate   Space: Place   X: Remove   Esc: Back ]",
-		20, float64(sh)-30, 1.3, theme.LineDim)
+	ui.DrawText(dst, ed.Hint, 20, float64(sh)-30, 1.3, theme.LineDim)
 }
 
 // gridCellPos はグリッド (gx, gy) の左上スクリーン座標を返す。
@@ -233,7 +232,8 @@ func (se *StationEditor) drawShipGrid(dst *ebiten.Image, theme *ui.Theme, x, y f
 }
 
 func (se *StationEditor) drawPalette(dst *ebiten.Image, theme *ui.Theme, x, y float64) {
-	ui.DrawText(dst, "PARTS", x, y, 1.6, theme.Line)
+	ed := i18n.S().Editor
+	ui.DrawText(dst, ed.PartsHeader, x, y, 1.6, theme.Line)
 	lineY := y + 32
 	for i, def := range se.palette {
 		qty := se.player.PartsInventory[def.ID]
@@ -251,29 +251,30 @@ func (se *StationEditor) drawPalette(dst *ebiten.Image, theme *ui.Theme, x, y fl
 			idxLabel = fmt.Sprintf("%d ", i+1)
 		}
 		ui.DrawText(dst,
-			fmt.Sprintf("%s%s%-15s x%d", prefix, idxLabel, def.Name, qty),
+			fmt.Sprintf(ed.PaletteRowFmt, prefix, idxLabel, i18n.PartName(def.ID), qty),
 			x, lineY, 1.3, clr)
 		lineY += 24
 	}
 }
 
 func (se *StationEditor) drawCursorInfo(dst *ebiten.Image, theme *ui.Theme, x, y float64) {
-	cursorText := fmt.Sprintf("Cursor (%d, %d)", se.cursorGX, se.cursorGY)
+	ed := i18n.S().Editor
+	cursorText := fmt.Sprintf(ed.CursorPosFmt, se.cursorGX, se.cursorGY)
 	ui.DrawText(dst, cursorText, x, y, 1.3, theme.LineDim)
 	if i := se.partAtCursor(); i >= 0 {
 		p := se.player.Parts[i]
-		name := "?"
-		if d := p.Def(); d != nil {
-			name = d.Name
+		name := i18n.PartName(p.DefID)
+		if name == "" {
+			name = "?"
 		}
-		ui.DrawText(dst, fmt.Sprintf("Cell: %s   %s", name, rotationLabel(p.Rotation)), x, y+22, 1.3, theme.Line)
+		ui.DrawText(dst, fmt.Sprintf(ed.CellLabel, name, rotationLabel(p.Rotation)), x, y+22, 1.3, theme.Line)
 	} else {
-		ui.DrawText(dst, "Cell: Empty", x, y+22, 1.3, theme.LineDim)
+		ui.DrawText(dst, ed.CellEmpty, x, y+22, 1.3, theme.LineDim)
 	}
 	if def := se.selectedDef(); def != nil {
 		ui.DrawText(dst,
-			fmt.Sprintf("Selected: %s (x%d)   Brush: %s",
-				def.Name, se.player.PartsInventory[def.ID], rotationLabel(se.brushRotation)),
+			fmt.Sprintf(ed.BrushLabel,
+				i18n.PartName(def.ID), se.player.PartsInventory[def.ID], rotationLabel(se.brushRotation)),
 			x, y+44, 1.3, theme.Line)
 	}
 }

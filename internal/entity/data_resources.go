@@ -21,9 +21,9 @@ const (
 // resourceInfos は各資源の表示・HP・重量情報。
 // Color はグリッド表示色（種別判別用）、MaxHP はグリッド毎の最大HP、Weight は単位重量。
 var resourceInfos = [resourceCount]ResourceInfo{
-	ResourceIron:   {Name: "IRON", Color: color.NRGBA{0xc8, 0xc8, 0xc8, 0xff}, MaxHP: 3, Weight: 1.0},
-	ResourceBronze: {Name: "BRONZE", Color: color.NRGBA{0xcd, 0x7f, 0x32, 0xff}, MaxHP: 8, Weight: 1.2},
-	ResourceIce:    {Name: "ICE", Color: color.NRGBA{0x80, 0xe0, 0xff, 0xff}, MaxHP: 2, Weight: 0.7},
+	ResourceIron:   {Color: color.NRGBA{0xc8, 0xc8, 0xc8, 0xff}, MaxHP: 3, Weight: 1.0},
+	ResourceBronze: {Color: color.NRGBA{0xcd, 0x7f, 0x32, 0xff}, MaxHP: 8, Weight: 1.2},
+	ResourceIce:    {Color: color.NRGBA{0x80, 0xe0, 0xff, 0xff}, MaxHP: 2, Weight: 0.7},
 }
 
 // resourcePrices は資源 1 単位あたりの売買単価（クレジット）。
