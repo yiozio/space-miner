@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 	"math/rand"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -854,8 +855,74 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		vector.StrokeRect(dst, nx-3, ny-3, 6, 6, 1, theme.Line, false)
 	}
 
-	ui.DrawText(dst, "[ WASD: Move    Q/E: Strafe    Shift: Boost    Space: Fire/Dock    M: Map    N: Warp    Esc: Menu ]",
-		20, float64(sh)-30, 1.5, theme.LineDim)
+	ui.DrawText(dst, e.buildControlsHelp(), 20, float64(sh)-30, 1.5, theme.LineDim)
+}
+
+// buildControlsHelp は現在のプレイヤー状態で実際に使えるキー操作だけを並べた
+// 1 行のヘルプ文字列を返す。スラスタは方向ごとに装備の有無で QWES を取捨し、
+// ブースト・射撃・ドック・ワープも条件を満たすときだけ表示する。
+func (e *Exploration) buildControlsHelp() string {
+	hasFwd, hasBck, hasLft, hasRgt := false, false, false, false
+	hasThruster := false
+	hasGun := false
+	for _, p := range e.player.Parts {
+		switch p.Kind() {
+		case entity.PartThruster:
+			hasThruster = true
+			switch p.ThrustDir() {
+			case entity.ThrustDirForward:
+				hasFwd = true
+			case entity.ThrustDirBackward:
+				hasBck = true
+			case entity.ThrustDirLeft:
+				hasLft = true
+			case entity.ThrustDirRight:
+				hasRgt = true
+			}
+		case entity.PartGun:
+			hasGun = true
+		}
+	}
+	// スラスタ未搭載のときは Cockpit が前向きにフォールバックする
+	if !hasThruster {
+		hasFwd = true
+	}
+
+	var parts []string
+	thrustKeys := ""
+	if hasLft {
+		thrustKeys += "Q"
+	}
+	if hasFwd {
+		thrustKeys += "W"
+	}
+	if hasRgt {
+		thrustKeys += "E"
+	}
+	if hasBck {
+		thrustKeys += "S"
+	}
+	if thrustKeys != "" {
+		parts = append(parts, thrustKeys+": Thrust")
+	}
+	parts = append(parts, "AD: Rotate")
+	if e.player.MaxFuel > 0 {
+		parts = append(parts, "Shift: Boost")
+	}
+	switch {
+	case hasGun && e.activeDock != nil:
+		parts = append(parts, "Space: Fire/Dock")
+	case hasGun:
+		parts = append(parts, "Space: Fire")
+	case e.activeDock != nil:
+		parts = append(parts, "Space: Dock")
+	}
+	parts = append(parts, "M: Map")
+	if e.player.HasWarpDrive() {
+		parts = append(parts, "N: Warp")
+	}
+	parts = append(parts, "Esc: Menu")
+	return "[ " + strings.Join(parts, "    ") + " ]"
 }
 
 // startWarp はワープ確定時に呼ばれる。自機を目的地方向に向け、速度をリセットして
