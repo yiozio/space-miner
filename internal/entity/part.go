@@ -46,12 +46,14 @@ func (p Part) Kind() PartKind { return p.Def().Kind }
 
 // ThrustDir はパーツ（主にスラスタ）の推進方向カテゴリを返す。
 // Rotation のみで決まり、Kind に依存しない（呼び出し側で Kind を確認すること）。
+// 画像の噴射口は CW 90°×R 回転で配置されるため、推進はその反対方向になる。
 type ThrustDir int
 
 const (
-	ThrustDirForward  ThrustDir = iota // R=0
-	ThrustDirSideways                  // R=1, R=3
-	ThrustDirBackward                  // R=2
+	ThrustDirForward  ThrustDir = iota // R=0 噴射が機体後方 → 推進は機体前方
+	ThrustDirRight                     // R=1 噴射が機体左側 → 推進は機体右方向
+	ThrustDirBackward                  // R=2 噴射が機体前方 → 推進は機体後方
+	ThrustDirLeft                      // R=3 噴射が機体右側 → 推進は機体左方向
 )
 
 // ThrustDir はスラスタの推進方向を返す。
@@ -59,10 +61,14 @@ func (p Part) ThrustDir() ThrustDir {
 	switch ((p.Rotation % 4) + 4) % 4 {
 	case 0:
 		return ThrustDirForward
+	case 1:
+		return ThrustDirRight
 	case 2:
 		return ThrustDirBackward
+	case 3:
+		return ThrustDirLeft
 	}
-	return ThrustDirSideways
+	return ThrustDirForward
 }
 
 // DrawPart は指定 Kind のアイコンを image 上の (x, y) を該当グリッド左上として描画する。

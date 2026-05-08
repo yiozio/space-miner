@@ -854,7 +854,7 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		vector.StrokeRect(dst, nx-3, ny-3, 6, 6, 1, theme.Line, false)
 	}
 
-	ui.DrawText(dst, "[ WASD: Move    Shift: Boost    Space: Fire/Dock    M: Map    N: Warp    Esc: Menu ]",
+	ui.DrawText(dst, "[ WASD: Move    Q/E: Strafe    Shift: Boost    Space: Fire/Dock    M: Map    N: Warp    Esc: Menu ]",
 		20, float64(sh)-30, 1.5, theme.LineDim)
 }
 

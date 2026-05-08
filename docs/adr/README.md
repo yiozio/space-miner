@@ -21,6 +21,7 @@
 | 0012 | [恒星マップとワープ](./0012-warp.md) | `internal/scene` |
 | 0013 | [セーブシステム](./0013-save.md) | `internal/save` |
 | 0014 | [HUD とパララックス](./0014-hud-parallax.md) | `internal/scene/exploration` |
+| 0015 | [横向きスラスタとストラフ操作](./0015-lateral-thrusters.md) | `internal/entity`, `internal/scene/exploration` |
 
 ## テンプレ
 

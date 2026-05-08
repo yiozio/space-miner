@@ -36,10 +36,12 @@ type Player struct {
 	VisitedStations    map[string]bool         // 初回入船ダイアログの再生済みステーション名（FullMap 名）
 	Tavern             map[string]*TavernBoard // 各ステーションの酒場掲示板（3 スロット）
 	PiratesKilledByMap map[string]int          // 各 FullMap での累計海賊撃破数（Bounty 進捗の根拠）
-	// 動的なスピード上限（前後の機軸成分に対して別々）。
+	// 動的なスピード上限（前後左右の方向別）。
 	// ブースト中は boost 上限へ瞬時上昇し、解除後は徐々に通常上限へ減衰する。
 	fwdCap float64
 	bckCap float64
+	lftCap float64
+	rgtCap float64
 	// シールド回復制御。
 	noDamageFrames int     // 最後の被弾からの経過フレーム
 	shieldRegenAcc float64 // 1 を超えるごとに ShieldHP を 1 上げる
@@ -163,10 +165,9 @@ type thrusterAgg struct {
 	boostFuelCost   float64
 }
 
-// thrusterStatsByDir はスラスタ集計を「前向き」「後ろ向き」別に返す。
-// 横向き（Rotation=1,3）のスラスタは無視する。
+// thrusterStatsByDir はスラスタ集計を方向別 (前/後/左/右) に返す。
 // Thruster が 1 つも無いときに限り Cockpit の最低限スラスタ性能を前向きに使う。
-func (p *Player) thrusterStatsByDir() (fwd, bck thrusterAgg) {
+func (p *Player) thrusterStatsByDir() (fwd, bck, lft, rgt thrusterAgg) {
 	var cockpit *PartDef
 	hasThruster := false
 	for _, part := range p.Parts {
@@ -182,8 +183,11 @@ func (p *Player) thrusterStatsByDir() (fwd, bck thrusterAgg) {
 				accumulateThruster(&fwd, d)
 			case ThrustDirBackward:
 				accumulateThruster(&bck, d)
+			case ThrustDirLeft:
+				accumulateThruster(&lft, d)
+			case ThrustDirRight:
+				accumulateThruster(&rgt, d)
 			}
-			// Sideways はスキップ（推進に寄与しない）
 		case PartCockpit:
 			cockpit = d
 		}
@@ -192,7 +196,7 @@ func (p *Player) thrusterStatsByDir() (fwd, bck thrusterAgg) {
 		// 非常用 Cockpit 推進は前向きのみに与える
 		accumulateThruster(&fwd, cockpit)
 	}
-	return fwd, bck
+	return fwd, bck, lft, rgt
 }
 
 // updateCap は方向別の動的スピード上限 cap を更新する。
@@ -229,8 +233,8 @@ func accumulateThruster(t *thrusterAgg, d *PartDef) {
 }
 
 // Update はキー入力に応じて機体を1フレーム動かす。発射は Shoot で別途行う。
-// 加速度・最高速度・ブースト性能は前向き / 後ろ向きスラスタを別々に集計する。
-// 横向きスラスタは推進に寄与せず、ブースト燃料も消費しない。
+// 加速度・最高速度・ブースト性能は方向別スラスタ (前後左右) を別々に集計する。
+// W/S で機軸方向、Q/E で横方向ストラフ。前後と左右は同時に押せる（斜め推進）。
 // スラスタが 0 のときは推力ゼロだが、既存の慣性は保持する。
 func (p *Player) Update() {
 	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
@@ -240,70 +244,97 @@ func (p *Player) Update() {
 		p.Angle += playerRotateSpeed
 	}
 
-	fwd, bck := p.thrusterStatsByDir()
+	fwd, bck, lft, rgt := p.thrusterStatsByDir()
 
 	cos, sin := math.Cos(p.Angle), math.Sin(p.Angle)
+	// 機体の右方向単位ベクトル (機軸を CW 90° 回した方向)
+	rightX, rightY := -sin, cos
 	forwardPressed := ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp)
 	backwardPressed := ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyArrowDown)
+	leftPressed := ebiten.IsKeyPressed(ebiten.KeyQ)
+	rightPressed := ebiten.IsKeyPressed(ebiten.KeyE)
 	boostHeld := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
 
-	accel := 0.0
-	dirSign := 0.0 // 1 = 前進, -1 = 後進
-	p.ThrustState = ThrustOff
-	p.ThrustActiveDir = ThrustActiveForward
-	switch {
-	case fwd.count > 0 && forwardPressed:
-		accel = fwd.accel
-		dirSign = 1
-		p.ThrustState = ThrustOn
-		p.ThrustActiveDir = ThrustActiveForward
-		if boostHeld && p.Fuel > 0 {
-			accel *= fwd.boostAccelMul
-			p.ThrustState = ThrustBoost
-			p.Fuel -= fwd.boostFuelCost
+	// 軸方向ヘルパ。同方向のスラスタが稼働した場合に true を返す。
+	applyThrust := func(agg thrusterAgg, vx, vy float64, activeBit ThrustActiveDir) (active, boosting bool) {
+		if agg.count == 0 {
+			return false, false
+		}
+		accel := agg.accel
+		boosting = boostHeld && p.Fuel > 0
+		if boosting {
+			accel *= agg.boostAccelMul
+			p.Fuel -= agg.boostFuelCost
 			if p.Fuel < 0 {
 				p.Fuel = 0
 			}
 		}
-	case bck.count > 0 && backwardPressed:
-		accel = bck.accel
-		dirSign = -1
-		p.ThrustState = ThrustOn
-		p.ThrustActiveDir = ThrustActiveBackward
-		if boostHeld && p.Fuel > 0 {
-			accel *= bck.boostAccelMul
-			p.ThrustState = ThrustBoost
-			p.Fuel -= bck.boostFuelCost
-			if p.Fuel < 0 {
-				p.Fuel = 0
-			}
-		}
+		p.VX += accel * vx
+		p.VY += accel * vy
+		p.ThrustActiveDir |= activeBit
+		return true, boosting
 	}
 
-	// 前向き/後ろ向きの動的スピード上限を更新。
-	// ブースト中は対応する boost 上限に瞬時セット、非ブースト時は通常上限へ減衰。
-	updateCap(&p.fwdCap, fwd, dirSign == 1 && p.ThrustState == ThrustBoost)
-	updateCap(&p.bckCap, bck, dirSign == -1 && p.ThrustState == ThrustBoost)
+	p.ThrustState = ThrustOff
+	p.ThrustActiveDir = 0
 
-	p.VX += accel * dirSign * cos
-	p.VY += accel * dirSign * sin
+	// 前後方向: W/S が同時押しなら前進優先 (既存挙動)。
+	fwdActive, fwdBoosting := false, false
+	bckActive, bckBoosting := false, false
+	switch {
+	case forwardPressed:
+		fwdActive, fwdBoosting = applyThrust(fwd, cos, sin, ThrustActiveForward)
+	case backwardPressed:
+		bckActive, bckBoosting = applyThrust(bck, -cos, -sin, ThrustActiveBackward)
+	}
+	// 左右方向: Q/E が同時押しなら左優先。前後とは独立に同時稼働できる。
+	lftActive, lftBoosting := false, false
+	rgtActive, rgtBoosting := false, false
+	switch {
+	case leftPressed:
+		lftActive, lftBoosting = applyThrust(lft, -rightX, -rightY, ThrustActiveLeft)
+	case rightPressed:
+		rgtActive, rgtBoosting = applyThrust(rgt, rightX, rightY, ThrustActiveRight)
+	}
 
-	// 速度の「大きさ」を機軸方向の動的キャップに合わせて制限する。
-	// 前進推力中は fwdCap、後進推力中は bckCap、非推力時は両者の大きい方を採用する。
-	// 機軸方向に加速しながら旋回すると、加速ベクトルが新しい機軸へ加わって速度の向きが
-	// 機軸寄りにずれ、それを毎フレーム最高速度に再正規化することで「最高速度を保ったまま
-	// 進行方向が徐々に機軸へ収束する」挙動になる。
-	// （旧実装は前後軸成分だけクランプし横成分を素通ししていたため、横成分が
-	//   累積して総速度が最高速度を越え、さらに機軸が慣性と 90° を越えると
-	//   負側 cap=0 で慣性が機軸の側面方向へ巻き取られる現象を招いていた。）
-	var spdCap float64
-	switch dirSign {
-	case 1:
-		spdCap = p.fwdCap
-	case -1:
-		spdCap = p.bckCap
-	default:
-		spdCap = math.Max(p.fwdCap, p.bckCap)
+	if fwdActive || bckActive || lftActive || rgtActive {
+		p.ThrustState = ThrustOn
+	}
+	if fwdBoosting || bckBoosting || lftBoosting || rgtBoosting {
+		p.ThrustState = ThrustBoost
+	}
+
+	// 動的スピード上限の更新。各方向はそれぞれブースト中の場合のみ boost 上限へ。
+	updateCap(&p.fwdCap, fwd, fwdBoosting)
+	updateCap(&p.bckCap, bck, bckBoosting)
+	updateCap(&p.lftCap, lft, lftBoosting)
+	updateCap(&p.rgtCap, rgt, rgtBoosting)
+
+	// 速度マグニチュードのキャップ。現在稼働中の方向の cap の最大値を採用する。
+	// 何も稼働していなければ全方向 cap の最大値を採用し、慣性を保ったまま
+	// 直前のキャップに合わせて緩やかに減衰させる。
+	spdCap := 0.0
+	hasActive := false
+	considerCap := func(c float64) {
+		if c > spdCap {
+			spdCap = c
+		}
+		hasActive = true
+	}
+	if fwdActive {
+		considerCap(p.fwdCap)
+	}
+	if bckActive {
+		considerCap(p.bckCap)
+	}
+	if lftActive {
+		considerCap(p.lftCap)
+	}
+	if rgtActive {
+		considerCap(p.rgtCap)
+	}
+	if !hasActive {
+		spdCap = math.Max(math.Max(p.fwdCap, p.bckCap), math.Max(p.lftCap, p.rgtCap))
 	}
 	if spdCap > 0 {
 		speed := math.Hypot(p.VX, p.VY)

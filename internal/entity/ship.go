@@ -18,14 +18,16 @@ const (
 	ThrustBoost
 )
 
-// ThrustActiveDir は現在燃焼しているスラスタ方向。
+// ThrustActiveDir は現在燃焼しているスラスタ方向のビットフラグ。
 // ThrustState != ThrustOff のときに参照する。
-// 通常は ThrustDirForward。後ろ向きスラスタを稼働させているときは ThrustDirBackward。
+// 前後/左右を同時稼働できるよう OR で結合される（例: 前進 + 右ストラフ）。
 type ThrustActiveDir int
 
 const (
-	ThrustActiveForward ThrustActiveDir = iota
-	ThrustActiveBackward
+	ThrustActiveForward  ThrustActiveDir = 1 << iota // 1: 前向きスラスタ稼働中
+	ThrustActiveBackward                             // 2: 後ろ向きスラスタ稼働中
+	ThrustActiveLeft                                 // 4: 左向きスラスタ稼働中
+	ThrustActiveRight                                // 8: 右向きスラスタ稼働中
 )
 
 // Ship はグリッド配置のパーツで構成された機体の基本型。
@@ -116,13 +118,21 @@ func (s *Ship) DrawAt(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
 }
 
 // thrustEmitters は推進炎を出すべきパーツ群を返す。
-// ThrustActiveDir に一致する向きのスラスタのみ対象（前進中なら Forward、後進中なら Backward）。
-// Thruster が 1 つも無い場合は Cockpit を非常用エミッタとして返す（前進専用）。
-// 横向き（Sideways）のスラスタは推進に寄与しないため炎も出さない。
+// ThrustActiveDir のビットに対応する向きのスラスタを集める（前後と左右を同時に含みうる）。
+// Thruster が 1 つも無い場合は Cockpit を非常用エミッタとして返す（前進方向のみ）。
 func (s *Ship) thrustEmitters() []Part {
-	wanted := ThrustDirForward
-	if s.ThrustActiveDir == ThrustActiveBackward {
-		wanted = ThrustDirBackward
+	dirActive := func(d ThrustDir) bool {
+		switch d {
+		case ThrustDirForward:
+			return s.ThrustActiveDir&ThrustActiveForward != 0
+		case ThrustDirBackward:
+			return s.ThrustActiveDir&ThrustActiveBackward != 0
+		case ThrustDirLeft:
+			return s.ThrustActiveDir&ThrustActiveLeft != 0
+		case ThrustDirRight:
+			return s.ThrustActiveDir&ThrustActiveRight != 0
+		}
+		return false
 	}
 	var out []Part
 	hasThruster := false
@@ -131,7 +141,7 @@ func (s *Ship) thrustEmitters() []Part {
 			continue
 		}
 		hasThruster = true
-		if p.ThrustDir() == wanted {
+		if dirActive(p.ThrustDir()) {
 			out = append(out, p)
 		}
 	}
@@ -139,7 +149,7 @@ func (s *Ship) thrustEmitters() []Part {
 		return out
 	}
 	// 非常用 Cockpit 推進: 前進方向のみ
-	if wanted != ThrustDirForward {
+	if s.ThrustActiveDir&ThrustActiveForward == 0 {
 		return nil
 	}
 	for _, p := range s.Parts {
@@ -184,18 +194,19 @@ func (s *Ship) drawAfterburners(dst *ebiten.Image, sx, sy float64, theme *ui.The
 		cxL := float64(p.GX) * g
 		cyL := float64(p.GY) * g
 		// 回転前の「後端中心オフセット」と「後方ベクトル」: ローカル +y が後方。
-		// パーツ rotation R を適用して、パーツ局所の +y 方向を 90° CW × R 回転する。
-		// (0, 1) を CW 回転: 0:(0,1) 1:(1,0) 2:(0,-1) 3:(-1,0)
+		// 画像は ebiten の GeoM.Rotate(R*π/2) で回転するため、ローカル +y は
+		// (x, y) → (-y, x) に従って回る。これは視覚的に CW 90°×R 回転に相当する。
+		// (0, 1) → R=0:(0,1) R=1:(-1,0) R=2:(0,-1) R=3:(1,0)
 		rxL, ryL := 0.0, 0.0
 		switch r {
 		case 0:
 			rxL, ryL = 0, 1
 		case 1:
-			rxL, ryL = 1, 0
+			rxL, ryL = -1, 0
 		case 2:
 			rxL, ryL = 0, -1
 		case 3:
-			rxL, ryL = -1, 0
+			rxL, ryL = 1, 0
 		}
 		// 後端中心位置（ローカル）= パーツ中心 + 後方ベクトル × g/2
 		halfG := g / 2

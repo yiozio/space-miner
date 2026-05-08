@@ -1,7 +1,7 @@
 # 0006. パーツ回転と前後スラスタ
 
 ## Status
-Accepted
+Accepted (横向きスラスタの扱いは [ADR 0015](./0015-lateral-thrusters.md) で更新)
 
 ## Context
 - スラスタの向きを変えて後方推進・横推進を構成できるようにしたい。
