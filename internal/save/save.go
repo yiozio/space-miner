@@ -1,6 +1,8 @@
 package save
 
-// セーブ・ロード機能。3 スロットの単純なファイルベース実装。
+// セーブ・ロード機能。手動 3 スロット + オートセーブ 1 スロットの計 4 つ。
+// オートセーブはステーションへの入場時に自動上書きされ、手動セーブからは
+// 上書き不可（読み出しのみ）。
 // 動的状態のうち Player のみを保存する。小惑星・ピックアップなどはゾーン定義から
 // 再生成される一時状態のため保存しない。
 // メタ情報（保存時刻・累計プレイ時間・所持金・宙域名）はスロット選択 UI で表示する。
@@ -19,9 +21,26 @@ const (
 	appDirName  = "space-miner"
 	saveVersion = 1
 
-	// SlotCount はセーブスロット数（1..SlotCount）。
+	// AutoSlot はオートセーブ専用のスロット番号。
+	// 手動 SAVE 画面では選択不可。
+	AutoSlot = 0
+
+	// SlotCount は手動セーブスロット数（1..SlotCount）。
 	SlotCount = 3
 )
+
+// AllSlots は全スロット番号（オート + 手動）を表示順で返す。
+func AllSlots() []int {
+	out := make([]int, 0, SlotCount+1)
+	out = append(out, AutoSlot)
+	for i := 1; i <= SlotCount; i++ {
+		out = append(out, i)
+	}
+	return out
+}
+
+// IsAutoSlot は指定スロットがオートセーブ用か返す。
+func IsAutoSlot(slot int) bool { return slot == AutoSlot }
 
 // State は保存ファイルのトップレベル構造。
 type State struct {
@@ -99,7 +118,8 @@ type LoadResult struct {
 	Playtime float64
 }
 
-// SlotPath はスロット番号 (1..SlotCount) のセーブファイル絶対パスを返す。
+// SlotPath はスロット番号 (AutoSlot または 1..SlotCount) のセーブファイル絶対パスを返す。
+// オートセーブは "save_auto.json" を使う。
 func SlotPath(slot int) (string, error) {
 	if !validSlot(slot) {
 		return "", fmt.Errorf("invalid save slot: %d", slot)
@@ -108,10 +128,14 @@ func SlotPath(slot int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, appDirName, fmt.Sprintf("save_%d.json", slot)), nil
+	name := fmt.Sprintf("save_%d.json", slot)
+	if slot == AutoSlot {
+		name = "save_auto.json"
+	}
+	return filepath.Join(base, appDirName, name), nil
 }
 
-func validSlot(slot int) bool { return slot >= 1 && slot <= SlotCount }
+func validSlot(slot int) bool { return slot == AutoSlot || (slot >= 1 && slot <= SlotCount) }
 
 // SlotExists は指定スロットにセーブが存在するか返す。
 func SlotExists(slot int) bool {
@@ -124,9 +148,10 @@ func SlotExists(slot int) bool {
 }
 
 // AnyExists はいずれかのスロットにセーブが存在するか返す。
+// オートセーブも含めてチェックする。
 func AnyExists() bool {
-	for i := 1; i <= SlotCount; i++ {
-		if SlotExists(i) {
+	for _, s := range AllSlots() {
+		if SlotExists(s) {
 			return true
 		}
 	}
@@ -146,17 +171,18 @@ func LoadMeta(slot int) (*Meta, error) {
 	return &m, nil
 }
 
-// LatestSlot は SavedAt が最も新しいスロット番号を返す。空のときは 0。
+// LatestSlot は SavedAt が最も新しいスロット番号を返す。
+// オートセーブも含む。どのスロットにもセーブが無い場合は -1 を返す。
 func LatestSlot() int {
-	best := 0
+	best := -1
 	var bestT time.Time
-	for i := 1; i <= SlotCount; i++ {
-		m, err := LoadMeta(i)
+	for _, s := range AllSlots() {
+		m, err := LoadMeta(s)
 		if err != nil || m == nil {
 			continue
 		}
-		if best == 0 || m.SavedAt.After(bestT) {
-			best = i
+		if best < 0 || m.SavedAt.After(bestT) {
+			best = s
 			bestT = m.SavedAt
 		}
 	}

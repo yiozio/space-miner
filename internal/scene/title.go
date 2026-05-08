@@ -52,7 +52,7 @@ func (t *Title) Update(d Director) error {
 	switch t.menu.Cursor {
 	case titleItemContinue:
 		slot := save.LatestSlot()
-		if slot == 0 {
+		if slot < 0 {
 			return nil
 		}
 		res, err := save.Load(slot)

@@ -3,6 +3,7 @@ package scene
 import (
 	"fmt"
 	"image/color"
+	"log"
 	"math"
 	"math/rand"
 	"strings"
@@ -354,6 +355,14 @@ func (e *Exploration) Update(d Director) error {
 				e.player.VisitedStations = make(map[string]bool)
 			}
 			e.player.VisitedStations[stationName] = true
+		}
+		// 入場時オートセーブ（VisitedStations 更新後に取り、初回会話状態も保存に含める）
+		if err := save.Save(save.AutoSlot, save.Context{
+			Player:   e.player,
+			Playtime: e.playtime,
+			MapName:  stationName,
+		}); err != nil {
+			log.Printf("auto-save on dock %s: %v", stationName, err)
 		}
 		d.Push(NewStationMenu(e.player, e.world, stationName))
 		if firstVisit {
