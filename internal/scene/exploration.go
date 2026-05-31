@@ -11,6 +11,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/yiozio/space-miner/internal/asset/sound"
 	"github.com/yiozio/space-miner/internal/dialog"
 	"github.com/yiozio/space-miner/internal/entity"
 	"github.com/yiozio/space-miner/internal/i18n"
@@ -76,6 +77,9 @@ type Exploration struct {
 	// ワープ進行状態。warpTimer > 0 の間は通常の Update をスキップしてアニメ専用に。
 	warpTimer int
 	warpDest  *entity.FullMap
+
+	// 回転音制御。A/D 押下でフェードイン → 持続ループ → 終端でフェードアウト。
+	rotationSound *sound.RotationSound
 }
 
 const (
@@ -120,6 +124,7 @@ func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 		pirateSpawnRng: rand.New(rand.NewSource(3)),
 		autoAimGridIdx: -1,
 		playtime:       playtime,
+		rotationSound:  sound.NewRotationSound(),
 	}
 	// 各 FullMap の中心にステーションを配置（恒星マップ／ワープ先選択でも参照される）
 	for i := range e.world.Maps {
@@ -267,17 +272,28 @@ func (e *Exploration) trySpawnAsteroid() {
 	}
 }
 
+// isRotationKeyPressed は Player.Update と同じ判定で回転入力中かを返す。
+// 回転音の同期にだけ用いる。
+func isRotationKeyPressed() bool {
+	return ebiten.IsKeyPressed(ebiten.KeyA) ||
+		ebiten.IsKeyPressed(ebiten.KeyArrowLeft) ||
+		ebiten.IsKeyPressed(ebiten.KeyD) ||
+		ebiten.IsKeyPressed(ebiten.KeyArrowRight)
+}
+
 func (e *Exploration) Update(d Director) error {
 	// HP 0 ならゲームオーバー画面を被せ、以降の処理はスキップする。
 	// GameOver が最上位にいる間 Exploration.Update は呼ばれないため二重 Push にならない。
 	if e.player.HP <= 0 {
 		e.player.ThrustState = entity.ThrustOff
+		e.rotationSound.Stop()
 		d.Push(NewGameOver())
 		return nil
 	}
 
 	// ワープ中は専用アニメだけ進め、入力はすべて無視
 	if e.warpTimer > 0 {
+		e.rotationSound.Stop()
 		e.tickWarp()
 		return nil
 	}
@@ -285,6 +301,7 @@ func (e *Exploration) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		// メニュー中はアフターバーナーが残らないよう推力状態をリセット
 		e.player.ThrustState = entity.ThrustOff
+		e.rotationSound.Stop()
 		d.Push(NewMenu(save.Context{
 			Player:   e.player,
 			Playtime: e.playtime,
@@ -296,6 +313,7 @@ func (e *Exploration) Update(d Director) error {
 	// 全体マップ（最後に入った FullMap を確認）
 	if inpututil.IsKeyJustPressed(ebiten.KeyM) || inpututil.IsKeyJustPressed(ebiten.KeyTab) {
 		e.player.ThrustState = entity.ThrustOff
+		e.rotationSound.Stop()
 		d.Push(NewWorldMapView(e.lastMap, e.stations, e.player.X, e.player.Y, e.player.Angle))
 		return nil
 	}
@@ -303,6 +321,7 @@ func (e *Exploration) Update(d Director) error {
 	// 恒星マップ → ワープ（Warp パーツ未搭載でも閲覧は可。確定は搭載時のみ）
 	if inpututil.IsKeyJustPressed(ebiten.KeyN) {
 		e.player.ThrustState = entity.ThrustOff
+		e.rotationSound.Stop()
 		canWarp := e.player.HasWarpDrive()
 		current := e.CurrentMapName()
 		d.Push(NewStarMap(e.world, current, canWarp, func(d Director, dest *entity.FullMap) bool {
@@ -313,6 +332,7 @@ func (e *Exploration) Update(d Director) error {
 	}
 
 	e.player.Update()
+	e.rotationSound.Update(isRotationKeyPressed())
 	e.playtime += 1.0 / 60.0 // ebitengine 既定 TPS（60）想定の累計プレイ時間
 
 	// 現在いる FullMap を更新（区画外なら直前の値を保持）
@@ -358,6 +378,7 @@ func (e *Exploration) Update(d Director) error {
 	// ドック中に Space 押下: 発射ではなくステーションメニューを開く
 	if e.activeDock != nil && inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		e.player.ThrustState = entity.ThrustOff
+		e.rotationSound.Stop()
 		stationName := e.activeDock.Name
 		// 初回入船時は専用スクリプトを上に重ねる（閉じるとステーションメニューに戻る）
 		firstVisit := !e.player.VisitedStations[stationName]
