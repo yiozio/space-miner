@@ -462,8 +462,11 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot, []GunFireSound) {
 			})
 		} else {
 			bullets = append(bullets, Bullet{
-				X:        ox,
-				Y:        oy,
+				// 新規弾は同フレーム内で 1 回 Update されるが、機体は発射前に既に
+				// 1 フレーム分 (VX,VY) 進んでいる。その移動量ぶん手前から射出して
+				// 銃口位置に合わせる（前進しながら撃つと射出地点がズレる補正）。
+				X:        ox - p.VX,
+				Y:        oy - p.VY,
 				VX:       fwx*d.GunBulletSpeed + p.VX,
 				VY:       fwy*d.GunBulletSpeed + p.VY,
 				Life:     bulletLifeFrames,
