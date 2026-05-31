@@ -129,6 +129,7 @@ func buildSfx() {
 	asteroidBreakPCM = genAsteroidBreakPCM()
 	explosionPCM = genExplosionPCM()
 	buildUISounds()
+	buildWarpSounds()
 }
 
 // PlayFireBurst は破裂音を、PlayFireZap はザップ音を、PlayFireLaser はレーザー音を、

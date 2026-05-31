@@ -319,10 +319,11 @@ func (e *Exploration) Update(d Director) error {
 		return nil
 	}
 
-	// ワープ中は専用アニメだけ進め、入力はすべて無視
+	// ワープ中は専用アニメだけ進め、入力はすべて無視。
+	// 回転音を流用し、前半は回転開始(intro)、後半（テレポート以降）は回転終了(outro)を流す。
 	if e.warpTimer > 0 {
-		e.rotationSound.Stop()
 		e.burnerSound.Stop()
+		e.rotationSound.Update(e.warpTimer > warpDuration/2)
 		e.tickWarp()
 		return nil
 	}
@@ -1059,6 +1060,7 @@ func (e *Exploration) startWarp(dest *entity.FullMap) {
 	e.player.ThrustState = entity.ThrustOff
 	e.warpDest = dest
 	e.warpTimer = warpDuration
+	sound.PlayWarp()
 }
 
 // tickWarp は warpTimer > 0 の間、ワープアニメを 1 フレーム進める。
@@ -1067,6 +1069,7 @@ func (e *Exploration) tickWarp() {
 	e.warpTimer--
 
 	if e.warpTimer == warpDuration/2 {
+		sound.PlayWarpJump()
 		dest := e.warpDest
 		if dest != nil {
 			e.player.X = dest.CX
