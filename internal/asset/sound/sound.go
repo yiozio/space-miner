@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -16,10 +17,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/vorbis"
 )
-
-/* 14s 32bit(16bit x 2ch(stereo)) */
-//go:embed rotate.ogg
-var rotateOgg []byte
 
 //go:embed burner.ogg
 var burnerOgg []byte
@@ -43,7 +40,7 @@ var (
 	rotateSound         Sound
 	rotateReversedSound Sound
 
-	// rotateSustainPCM は回転音のループ用サステイン断片（原音 5s→4s→5s）。
+	// rotateSustainPCM は回転音のループ用サステイン断片（loopHigh→loopLow→loopHigh）。
 	// 両端・中央が同一サンプルのため継ぎ目なくループできる。初期化時に一度だけ構築。
 	rotateSustainPCM []byte
 
@@ -59,13 +56,13 @@ func Context() *audio.Context {
 
 func initAudio() {
 	ctx = audio.NewContext(sampleRate)
-	var rotatePCM, rotateFrames = decodeOGG(rotateOgg)
+	var rotatePCM, rotateFrames = generateRotatePCM()
 	var rotateReversedPCM = reversePCM(rotatePCM)
 	rotateSound = Sound{pcm: rotatePCM, frames: rotateFrames}
 	rotateReversedSound = Sound{pcm: rotateReversedPCM, frames: rotateFrames}
 
-	// サステイン = 逆再生(5s→4s) + 順再生(4s→5s)。継ぎ目（4s）と
-	// ループ折り返し（5s）が同一サンプルになるので無音クリックが出ない。
+	// サステイン = 逆再生(loopHigh→loopLow) + 順再生(loopLow→loopHigh)。継ぎ目
+	// （loopLow）とループ折り返し（loopHigh）が同一サンプルになり無音クリックが出ない。
 	rev := reverseClip(loopLow, loopHigh)
 	fwd := rotateSound.forwardClip(loopLow, loopHigh)
 	rotateSustainPCM = make([]byte, 0, len(rev)+len(fwd))
@@ -74,6 +71,35 @@ func initAudio() {
 
 	var burnerPCM, burnerFrames = decodeOGG(burnerOgg)
 	burnerSound = Sound{pcm: burnerPCM, frames: burnerFrames}
+}
+
+// 回転音の合成パラメータ。OGG を読み込む代わりに正弦波＋ホワイトノイズを
+// 手続き的に生成して原音とする。音色はここの値で調整する。
+const (
+	rotateGenDur   = 4 * time.Second // 生成する原音長（loopHigh 以上であること）
+	rotateFreq     = 440.0           // 正弦波の周波数 [Hz]
+	rotateSineAmp  = 0.6             // 正弦波の振幅（0.0〜1.0）
+	rotateNoiseAmp = 0.4             // ホワイトノイズの振幅（0.0〜1.0）
+)
+
+// generateRotatePCM は回転音の原音を合成する。正弦波にホワイトノイズを混ぜた
+// 32bit float ステレオ PCM（先頭からの順再生用）とフレーム数を返す。
+// ノイズはチャンネル独立に与えてステレオ感を出す。逆再生してもノイズ・正弦波
+// ともに性質が変わらないため、既存の逆再生ロジックはそのまま使える。
+func generateRotatePCM() ([]byte, int64) {
+	frames := int(int64(rotateGenDur) * sampleRate / int64(time.Second))
+	pcm := make([]byte, frames*bytesPerFrame)
+	rng := rand.New(rand.NewSource(1)) // 再現性のため固定シード
+	step := 2 * math.Pi * rotateFreq / sampleRate
+	for f := range frames {
+		sine := rotateSineAmp * float32(math.Sin(step*float64(f)))
+		for ch := range 2 {
+			noise := rotateNoiseAmp * (rng.Float32()*2 - 1)
+			v := max(-1, min(sine+noise, 1)) // クリッピング防止
+			binary.LittleEndian.PutUint32(pcm[f*bytesPerFrame+ch*4:], math.Float32bits(v))
+		}
+	}
+	return pcm, int64(frames)
 }
 
 // reversePCM は 32bit float ステレオ PCM をフレーム単位で時間反転する。
