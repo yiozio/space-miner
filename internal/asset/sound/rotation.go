@@ -53,7 +53,7 @@ const outroAttack = 10 * time.Millisecond
 const playerBufferSize = 50 * time.Millisecond
 
 // masterVolume は回転音全体の音量（0.0〜1.0）。全プレイヤーに適用する。
-const masterVolume = 0.10
+const masterVolume = 0.01
 
 type rotPhase int
 
