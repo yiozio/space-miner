@@ -4,8 +4,10 @@ package sound
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
 	"log"
+	"math"
 	"sync"
 	"time"
 
@@ -18,6 +20,9 @@ import (
 /* 14s 32bit(16bit x 2ch(stereo)) */
 //go:embed rotate.ogg
 var rotateOgg []byte
+
+//go:embed burner.ogg
+var burnerOgg []byte
 
 type Sound struct {
 	pcm    []byte
@@ -41,6 +46,8 @@ var (
 	// rotateSustainPCM は回転音のループ用サステイン断片（原音 5s→4s→5s）。
 	// 両端・中央が同一サンプルのため継ぎ目なくループできる。初期化時に一度だけ構築。
 	rotateSustainPCM []byte
+
+	burnerSound Sound // ロケットバーナー音の原音
 )
 
 // Context は audio.Context を遅延初期化して返す。
@@ -60,10 +67,13 @@ func initAudio() {
 	// サステイン = 逆再生(5s→4s) + 順再生(4s→5s)。継ぎ目（4s）と
 	// ループ折り返し（5s）が同一サンプルになるので無音クリックが出ない。
 	rev := reverseClip(loopLow, loopHigh)
-	fwd := forwardClip(loopLow, loopHigh)
+	fwd := rotateSound.forwardClip(loopLow, loopHigh)
 	rotateSustainPCM = make([]byte, 0, len(rev)+len(fwd))
 	rotateSustainPCM = append(rotateSustainPCM, rev...)
 	rotateSustainPCM = append(rotateSustainPCM, fwd...)
+
+	var burnerPCM, burnerFrames = decodeOGG(burnerOgg)
+	burnerSound = Sound{pcm: burnerPCM, frames: burnerFrames}
 }
 
 // reversePCM は 32bit float ステレオ PCM をフレーム単位で時間反転する。
@@ -79,33 +89,35 @@ func reversePCM(src []byte) []byte {
 }
 
 // frameAt は原音先頭からの時刻 d に対応するフレーム位置を返す。
-// [0, rotateSound.frames] にクランプする。
-func frameAt(d time.Duration) int64 {
+// [0, s.frames] にクランプする。
+func (s Sound) frameAt(d time.Duration) int64 {
 	if d <= 0 {
 		return 0
 	}
 	f := int64(d) * sampleRate / int64(time.Second)
-	return min(f, rotateSound.frames)
+	return min(f, s.frames)
 }
 
 // forwardClip は原音区間 [a, b] を順再生するための PCM 断片。
-func forwardClip(a, b time.Duration) []byte {
-	fa, fb := frameAt(a), frameAt(b)
+func (s Sound) forwardClip(a, b time.Duration) []byte {
+	fa, fb := s.frameAt(a), s.frameAt(b)
 	fb = max(fb, fa)
-	return rotateSound.pcm[fa*bytesPerFrame : fb*bytesPerFrame]
+	return s.pcm[fa*bytesPerFrame : fb*bytesPerFrame]
 }
 
-// reverseClip は原音区間 [a, b]（a < b）を b→a の向きに鳴らすための
+// reverseClip は回転原音の区間 [a, b]（a < b）を b→a の向きに鳴らすための
 // 逆再生バッファ断片。原音フレーム k は逆再生バッファのフレーム n-k に対応する。
 func reverseClip(a, b time.Duration) []byte {
 	n := rotateSound.frames
-	fa, fb := frameAt(a), frameAt(b)
+	fa, fb := rotateSound.frameAt(a), rotateSound.frameAt(b)
 	fb = max(fb, fa)
 	return rotateReversedSound.pcm[(n-fb)*bytesPerFrame : (n-fa)*bytesPerFrame]
 }
 
 // decodeOGG は OGG を 32bit float ステレオ PCM へ展開し、
-// バイト列とフレーム数を返す。デコード失敗はアセット異常なので致命扱い。
+// バイト列とフレーム数を返す。原音のサンプリングレートが Context と異なる場合は
+// sampleRate へリサンプルして揃える（vorbis.DecodeF32 はリサンプルしないため）。
+// デコード失敗はアセット異常なので致命扱い。
 func decodeOGG(b []byte) ([]byte, int64) {
 	s, err := vorbis.DecodeF32(bytes.NewReader(b))
 	if err != nil {
@@ -115,6 +127,34 @@ func decodeOGG(b []byte) ([]byte, int64) {
 	if err != nil {
 		log.Fatalf("sound: read pcm: %v", err)
 	}
-	frames := s.Length() / bytesPerFrame
+	if s.SampleRate() != sampleRate {
+		pcm = resampleF32(pcm, s.SampleRate(), sampleRate)
+	}
+	frames := int64(len(pcm) / bytesPerFrame)
 	return pcm, frames
+}
+
+// resampleF32 は 32bit float ステレオ PCM を srcRate から dstRate へ線形補間で
+// リサンプルする。効果音用途では線形補間で十分。
+func resampleF32(src []byte, srcRate, dstRate int) []byte {
+	if srcRate == dstRate || len(src) == 0 {
+		return src
+	}
+	srcFrames := len(src) / bytesPerFrame
+	dstFrames := int(int64(srcFrames) * int64(dstRate) / int64(srcRate))
+	dst := make([]byte, dstFrames*bytesPerFrame)
+	for i := range dstFrames {
+		// 出力フレーム i に対応する入力位置（連続値）と前後フレーム・補間係数。
+		pos := float64(i) * float64(srcRate) / float64(dstRate)
+		i0 := int(pos)
+		i1 := min(i0+1, srcFrames-1)
+		frac := float32(pos - float64(i0))
+		for ch := range 2 {
+			v0 := math.Float32frombits(binary.LittleEndian.Uint32(src[i0*bytesPerFrame+ch*4:]))
+			v1 := math.Float32frombits(binary.LittleEndian.Uint32(src[i1*bytesPerFrame+ch*4:]))
+			v := v0 + (v1-v0)*frac
+			binary.LittleEndian.PutUint32(dst[i*bytesPerFrame+ch*4:], math.Float32bits(v))
+		}
+	}
+	return dst
 }

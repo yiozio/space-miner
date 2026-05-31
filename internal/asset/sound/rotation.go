@@ -53,7 +53,7 @@ const outroAttack = 10 * time.Millisecond
 const playerBufferSize = 50 * time.Millisecond
 
 // masterVolume は回転音全体の音量（0.0〜1.0）。全プレイヤーに適用する。
-const masterVolume = 0.15
+const masterVolume = 0.10
 
 type rotPhase int
 
@@ -138,7 +138,7 @@ func (r *RotationSound) enterPlaying(from time.Duration) {
 	}
 	// イントロ部のみ 0→1 のフェードインを掛ける。末尾は full のままなので
 	// サステインとの継ぎ目は連続。from>=5s だと intro 長 0 で no-op。
-	intro := fadeInF32(forwardClip(from, loopHigh))
+	intro := fadeInF32(rotateSound.forwardClip(from, loopHigh))
 	buf := make([]byte, 0, len(intro)+len(rotateSustainPCM))
 	buf = append(buf, intro...)
 	buf = append(buf, rotateSustainPCM...)

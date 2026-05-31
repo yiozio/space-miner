@@ -80,6 +80,8 @@ type Exploration struct {
 
 	// 回転音制御。A/D 押下でフェードイン → 持続ループ → 終端でフェードアウト。
 	rotationSound *sound.RotationSound
+	// バーナー音制御。推進中はイントロ→ループ再生、停止で再生終了。
+	burnerSound *sound.BurnerSound
 }
 
 const (
@@ -125,6 +127,7 @@ func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 		autoAimGridIdx: -1,
 		playtime:       playtime,
 		rotationSound:  sound.NewRotationSound(),
+		burnerSound:    sound.NewBurnerSound(),
 	}
 	// 各 FullMap の中心にステーションを配置（恒星マップ／ワープ先選択でも参照される）
 	for i := range e.world.Maps {
@@ -287,6 +290,7 @@ func (e *Exploration) Update(d Director) error {
 	if e.player.HP <= 0 {
 		e.player.ThrustState = entity.ThrustOff
 		e.rotationSound.Stop()
+		e.burnerSound.Stop()
 		d.Push(NewGameOver())
 		return nil
 	}
@@ -294,6 +298,7 @@ func (e *Exploration) Update(d Director) error {
 	// ワープ中は専用アニメだけ進め、入力はすべて無視
 	if e.warpTimer > 0 {
 		e.rotationSound.Stop()
+		e.burnerSound.Stop()
 		e.tickWarp()
 		return nil
 	}
@@ -302,6 +307,7 @@ func (e *Exploration) Update(d Director) error {
 		// メニュー中はアフターバーナーが残らないよう推力状態をリセット
 		e.player.ThrustState = entity.ThrustOff
 		e.rotationSound.Stop()
+		e.burnerSound.Stop()
 		d.Push(NewMenu(save.Context{
 			Player:   e.player,
 			Playtime: e.playtime,
@@ -314,6 +320,7 @@ func (e *Exploration) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyM) || inpututil.IsKeyJustPressed(ebiten.KeyTab) {
 		e.player.ThrustState = entity.ThrustOff
 		e.rotationSound.Stop()
+		e.burnerSound.Stop()
 		d.Push(NewWorldMapView(e.lastMap, e.stations, e.player.X, e.player.Y, e.player.Angle))
 		return nil
 	}
@@ -322,6 +329,7 @@ func (e *Exploration) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyN) {
 		e.player.ThrustState = entity.ThrustOff
 		e.rotationSound.Stop()
+		e.burnerSound.Stop()
 		canWarp := e.player.HasWarpDrive()
 		current := e.CurrentMapName()
 		d.Push(NewStarMap(e.world, current, canWarp, func(d Director, dest *entity.FullMap) bool {
@@ -333,6 +341,7 @@ func (e *Exploration) Update(d Director) error {
 
 	e.player.Update()
 	e.rotationSound.Update(isRotationKeyPressed())
+	e.burnerSound.Update(e.player.ThrustState != entity.ThrustOff, e.player.ThrustState == entity.ThrustBoost)
 	e.playtime += 1.0 / 60.0 // ebitengine 既定 TPS（60）想定の累計プレイ時間
 
 	// 現在いる FullMap を更新（区画外なら直前の値を保持）
@@ -379,6 +388,7 @@ func (e *Exploration) Update(d Director) error {
 	if e.activeDock != nil && inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		e.player.ThrustState = entity.ThrustOff
 		e.rotationSound.Stop()
+		e.burnerSound.Stop()
 		stationName := e.activeDock.Name
 		// 初回入船時は専用スクリプトを上に重ねる（閉じるとステーションメニューに戻る）
 		firstVisit := !e.player.VisitedStations[stationName]
