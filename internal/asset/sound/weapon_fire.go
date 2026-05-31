@@ -13,6 +13,8 @@ import (
 //   - ザップ音（Zap）  : 高→低へ掃引する低音ノコギリ波にビブラートを掛けた電子音。Plasma 用。
 //   - レーザー音（Laser）: 低音のノコギリ波＋ホワイトノイズに軽いアタックとサステイン。Laser 用。
 //   - 着弾音（Hit）    : 明るいノイズ＋軽い音程を高速減衰させた「パン」という当たり音。
+//   - 被ダメージ音（Damage）: 低い正弦波が下降する「ダンッ」という被弾・衝突音（シールド有）。
+//   - 被ダメージ破裂音（DamageBurst）: 着弾音より低く少し長い破裂音（シールド無＝直接被弾）。
 //
 // 再生は ebiten 公式 audio 例の playSE 同様、毎回プレイヤーを作って Play する
 // fire-and-forget 方式。再生中のプレイヤーは Context が保持し、終端で解放される
@@ -20,18 +22,22 @@ import (
 
 // 効果音の合成済み PCM（初期化時に一度だけ構築）。
 var (
-	fireBurstPCM []byte
-	fireZapPCM   []byte
-	fireLaserPCM []byte
-	hitPCM       []byte
+	fireBurstPCM   []byte
+	fireZapPCM     []byte
+	fireLaserPCM   []byte
+	hitPCM         []byte
+	damagePCM      []byte
+	damageBurstPCM []byte
 )
 
 // 各効果音の再生音量（0.0〜1.0）。
 const (
-	fireBurstVol = 0.3
-	fireZapVol   = 0.3
-	fireLaserVol = 0.25
-	hitVol       = 0.35
+	fireBurstVol   = 0.3
+	fireZapVol     = 0.3
+	fireLaserVol   = 0.25
+	hitVol         = 0.35
+	damageVol      = 0.4
+	damageBurstVol = 0.4
 )
 
 // 破裂音の合成パラメータ。
@@ -70,20 +76,43 @@ const (
 	hitToneAmp  = 0.4                   // 音程成分の混合量
 )
 
-// buildWeaponSounds は全効果音 PCM を生成する。initAudio から呼ばれる。
-func buildWeaponSounds() {
+// 被ダメージ音の合成パラメータ。低い正弦波を下降させた「ダンッ」。
+const (
+	damageDur      = 200 * time.Millisecond // 全体長
+	damageFreqHi   = 150.0                  // 開始周波数 [Hz]（ここから下降）
+	damageFreqLo   = 70.0                   // 終了周波数 [Hz]
+	damageDecay    = 60 * time.Millisecond  // 指数減衰の時定数
+	damageNoiseAmp = 0.25                   // パンチを与える低域ノイズ量
+	damageNoiseCut = 400.0                  // 低域ノイズのローパス [Hz]
+)
+
+// 被ダメージ破裂音の合成パラメータ（シールド無）。着弾音(Hit)より低く・少し長い破裂。
+const (
+	damageBurstDur      = 140 * time.Millisecond // 着弾音より少し長い
+	damageBurstDecay    = 30 * time.Millisecond  // 破裂感のある減衰
+	damageBurstCut      = 1200.0                 // 着弾音(6000)より低くこもった破裂
+	damageBurstToneFreq = 110.0                  // 低い芯の音程 [Hz]
+	damageBurstToneAmp  = 0.35                   // 音程成分の混合量
+)
+
+// buildSfx は全効果音 PCM を生成する。initAudio から呼ばれる。
+func buildSfx() {
 	fireBurstPCM = genBurstPCM()
 	fireZapPCM = genZapPCM()
 	fireLaserPCM = genLaserPCM()
 	hitPCM = genHitPCM()
+	damagePCM = genDamagePCM()
+	damageBurstPCM = genDamageBurstPCM()
 }
 
 // PlayFireBurst は破裂音を、PlayFireZap はザップ音を、PlayFireLaser はレーザー音を、
 // PlayHit は着弾音を、それぞれワンショット再生する。
-func PlayFireBurst() { playOneShot(fireBurstPCM, fireBurstVol) }
-func PlayFireZap()   { playOneShot(fireZapPCM, fireZapVol) }
-func PlayFireLaser() { playOneShot(fireLaserPCM, fireLaserVol) }
-func PlayHit()       { playOneShot(hitPCM, hitVol) }
+func PlayFireBurst()   { playOneShot(fireBurstPCM, fireBurstVol) }
+func PlayFireZap()     { playOneShot(fireZapPCM, fireZapVol) }
+func PlayFireLaser()   { playOneShot(fireLaserPCM, fireLaserVol) }
+func PlayHit()         { playOneShot(hitPCM, hitVol) }
+func PlayDamage()      { playOneShot(damagePCM, damageVol) }
+func PlayDamageBurst() { playOneShot(damageBurstPCM, damageBurstVol) }
 
 // playOneShot は pcm を新しいプレイヤーで一度だけ鳴らす（fire-and-forget）。
 func playOneShot(pcm []byte, vol float64) {
@@ -178,6 +207,52 @@ func genHitPCM() []byte {
 		tone := float32(math.Sin(step * float64(i)))
 		env := float32(math.Exp(-float64(i) / sampleRate / tau))
 		mono[i] = (lp + hitToneAmp*tone) * env
+	}
+	normalizeMono(mono, 0.9)
+	return monoToStereoPCM(mono)
+}
+
+// genDamagePCM は高→低へ下降する低音正弦波に低域ノイズを足し、指数減衰させた
+// 「ダンッ」という被ダメージ音を作る。
+func genDamagePCM() []byte {
+	n := frameCount(damageDur)
+	mono := make([]float32, n)
+	rng := rand.New(rand.NewSource(19))
+	alpha := lowpassAlpha(damageNoiseCut)
+	tau := float64(damageDecay) / float64(time.Second)
+	var phase float64 // 0〜1 に正規化した正弦位相
+	var lp float32
+	for i := range n {
+		frac := float64(i) / float64(n-1) // 0→1
+		freq := damageFreqHi + (damageFreqLo-damageFreqHi)*frac
+		phase += freq / sampleRate
+		phase -= math.Floor(phase)
+		tone := float32(math.Sin(2 * math.Pi * phase))
+		white := rng.Float32()*2 - 1
+		lp += alpha * (white - lp)
+		env := float32(math.Exp(-float64(i) / sampleRate / tau))
+		mono[i] = (tone + damageNoiseAmp*lp) * env
+	}
+	normalizeMono(mono, 0.9)
+	return monoToStereoPCM(mono)
+}
+
+// genDamageBurstPCM はシールド無しで直接被弾したときの破裂音を作る。着弾音(Hit)を
+// 低く・少し長くした構成で、こもったノイズに低い音程を足して高速減衰させる。
+func genDamageBurstPCM() []byte {
+	n := frameCount(damageBurstDur)
+	mono := make([]float32, n)
+	rng := rand.New(rand.NewSource(23))
+	alpha := lowpassAlpha(damageBurstCut)
+	tau := float64(damageBurstDecay) / float64(time.Second)
+	step := 2 * math.Pi * damageBurstToneFreq / sampleRate
+	var lp float32
+	for i := range n {
+		white := rng.Float32()*2 - 1
+		lp += alpha * (white - lp)
+		tone := float32(math.Sin(step * float64(i)))
+		env := float32(math.Exp(-float64(i) / sampleRate / tau))
+		mono[i] = (lp + damageBurstToneAmp*tone) * env
 	}
 	normalizeMono(mono, 0.9)
 	return monoToStereoPCM(mono)

@@ -275,6 +275,17 @@ func (e *Exploration) trySpawnAsteroid() {
 	}
 }
 
+// playDamageSound はシールドの有無で被ダメージ音を出し分ける。
+// シールドが残っていれば「ダンッ」、無ければより低く少し長い破裂音を鳴らす。
+// Damage 適用でシールド値が減る前に呼ぶこと。
+func (e *Exploration) playDamageSound() {
+	if e.player.ShieldHP > 0 {
+		sound.PlayDamage()
+	} else {
+		sound.PlayDamageBurst()
+	}
+}
+
 // playFireSound は発射音の種類に対応する効果音を再生する。
 func playFireSound(s entity.GunFireSound) {
 	switch s {
@@ -668,7 +679,10 @@ func (e *Exploration) handlePlayerAsteroidCollisions() {
 				impactSpeed := -vNormal
 				if impactSpeed > collisionDamageThreshold {
 					dmg := int((impactSpeed - collisionDamageThreshold) * collisionDamageFactor)
-					p.Damage(dmg)
+					if dmg > 0 {
+						e.playDamageSound()
+						p.Damage(dmg)
+					}
 				}
 
 				// 法線成分のみ反射（接線成分はそのまま残す＝かすめ続けない）
@@ -754,6 +768,7 @@ func (e *Exploration) handlePlayerPirateCollisions() {
 				if impactSpeed > collisionDamageThreshold {
 					dmg := int((impactSpeed - collisionDamageThreshold) * collisionDamageFactor)
 					if dmg > 0 {
+						e.playDamageSound()
 						p.Damage(dmg)
 						pr.TakeHit(dmg)
 					}
@@ -1209,11 +1224,11 @@ func (e *Exploration) handleHostileBulletsHitPlayer() {
 		if math.Hypot(b.X-e.player.X, b.Y-e.player.Y) > playerHitRadius {
 			continue
 		}
+		e.playDamageSound()
 		e.player.Damage(b.Damage)
 		impact := b.ImpactFX
 		bx, by := b.X, b.Y
 		e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
-		sound.PlayHit()
 		if impact {
 			e.spawnImpact(bx, by, true)
 		}
@@ -1379,6 +1394,7 @@ func (e *Exploration) fireLaser(l entity.LaserShot) {
 		e.pirates[pirateIdx].TakeHit(l.Damage)
 		// プレイヤー弾命中時は AutoAim ターゲット更新は行わない（レーザーは別系統）
 	} else if playerHit {
+		e.playDamageSound()
 		e.player.Damage(l.Damage)
 	}
 
