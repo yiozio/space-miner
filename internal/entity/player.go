@@ -22,15 +22,17 @@ const (
 // Player はプレイヤー機。Ship に操作・発射・インベントリ・HP・燃料・クレジットを加えたもの。
 type Player struct {
 	Ship
-	HP                 int
-	MaxHP              int // 基本 HP + 全 Armor の ArmorHP 合算
-	ShieldHP           int // 現在のシールド HP
-	MaxShieldHP        int // 全 Shield パーツの ShieldHP 合算
-	Fuel               float64
-	MaxFuel            float64
-	MaxCargo           float64 // Cockpit + Cargo パーツの CargoCapacity 合算
-	Credits            int
-	fireTimer          int
+	HP          int
+	MaxHP       int // 基本 HP + 全 Armor の ArmorHP 合算
+	ShieldHP    int // 現在のシールド HP
+	MaxShieldHP int // 全 Shield パーツの ShieldHP 合算
+	Fuel        float64
+	MaxFuel     float64
+	MaxCargo    float64 // Cockpit + Cargo パーツの CargoCapacity 合算
+	Credits     int
+	// gunFireTimers はガンごとの発射クールダウン残フレーム。グリッド位置(GX,GY)で
+	// 管理し、各ガンが自分の GunCooldown で独立して発射する。
+	gunFireTimers      map[[2]int]int
 	Inventory          map[ResourceType]int    // 資源
 	PartsInventory     map[PartID]int          // 船に未取付のスペアパーツ
 	VisitedStations    map[string]bool         // 初回入船ダイアログの再生済みステーション名（FullMap 名）
@@ -348,8 +350,11 @@ func (p *Player) Update() {
 	p.X += p.VX
 	p.Y += p.VY
 
-	if p.fireTimer > 0 {
-		p.fireTimer--
+	// 各ガンの発射クールダウンを 1 フレーム進める。
+	for k, t := range p.gunFireTimers {
+		if t > 0 {
+			p.gunFireTimers[k] = t - 1
+		}
 	}
 	// シールド回復: 最後の被弾から ShieldRegenDelay フレーム経過後、毎フレーム回復していく。
 	p.noDamageFrames++
@@ -392,15 +397,14 @@ func (p *Player) Damage(amount int) {
 	}
 }
 
-// Shoot はクールダウンが許せば各 Gun パーツから 1 発ずつ発射する。
+// Shoot は各 Gun パーツを個別のクールダウンで発射する（ガンごとに独立）。
 // 弾は各 Gun の Rotation に従う向きで射出され、発射位置はパーツの前端中心。
 // 戻り値: 通常弾 (Trail/Ball) と瞬間命中レーザー要求 (Laser スタイル)、および
 // この発射で鳴らすべき発射音の種類（重複は除去）の 3 つ。
-// クールダウンは発射に参加したガンの中で最も長いものを採用する（最遅ガンが律速）。
-// クールダウン中なら全て nil。
+// クールダウン中のガンは発射せず、全ガンが待機中なら全て nil。
 func (p *Player) Shoot() ([]Bullet, []LaserShot, []GunFireSound) {
-	if p.fireTimer > 0 {
-		return nil, nil, nil
+	if p.gunFireTimers == nil {
+		p.gunFireTimers = map[[2]int]int{}
 	}
 	var bullets []Bullet
 	var lasers []LaserShot
@@ -412,10 +416,14 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot, []GunFireSound) {
 	toWorld := func(lx, ly float64) (float64, float64) {
 		return -sin*lx - cos*ly, cos*lx - sin*ly
 	}
-	maxCooldown := 0
 	for _, part := range p.Parts {
 		d := part.Def()
 		if d == nil || d.Kind != PartGun {
+			continue
+		}
+		// このガンがクールダウン中なら発射しない。
+		key := [2]int{part.GX, part.GY}
+		if p.gunFireTimers[key] > 0 {
 			continue
 		}
 		var fxL, fyL float64
@@ -462,16 +470,12 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot, []GunFireSound) {
 				ImpactFX: d.GunBulletImpact,
 			})
 		}
-		if d.GunCooldown > maxCooldown {
-			maxCooldown = d.GunCooldown
-		}
+		// このガンを自分の GunCooldown でクールダウンに入れる。
+		p.gunFireTimers[key] = d.GunCooldown
 		if s := d.GunFireSound; s != FireSoundNone && !seenSound[s] {
 			seenSound[s] = true
 			fireSounds = append(fireSounds, s)
 		}
-	}
-	if len(bullets)+len(lasers) > 0 {
-		p.fireTimer = maxCooldown
 	}
 	return bullets, lasers, fireSounds
 }
