@@ -275,6 +275,18 @@ func (e *Exploration) trySpawnAsteroid() {
 	}
 }
 
+// playFireSound は発射音の種類に対応する効果音を再生する。
+func playFireSound(s entity.GunFireSound) {
+	switch s {
+	case entity.FireSoundBurst:
+		sound.PlayFireBurst()
+	case entity.FireSoundZap:
+		sound.PlayFireZap()
+	case entity.FireSoundLaser:
+		sound.PlayFireLaser()
+	}
+}
+
 // isRotationKeyPressed は Player.Update と同じ判定で回転入力中かを返す。
 // 回転音の同期にだけ用いる。
 func isRotationKeyPressed() bool {
@@ -417,12 +429,15 @@ func (e *Exploration) Update(d Director) error {
 
 	// 発射（押しっぱなしでクールダウン許可分だけ発射）
 	if ebiten.IsKeyPressed(ebiten.KeySpace) {
-		bullets, lasers := e.player.Shoot()
+		bullets, lasers, fireSounds := e.player.Shoot()
 		if len(bullets) > 0 {
 			e.bullets = append(e.bullets, bullets...)
 		}
 		for _, l := range lasers {
 			e.fireLaser(l)
+		}
+		for _, s := range fireSounds {
+			playFireSound(s)
 		}
 	}
 

@@ -61,6 +61,7 @@ func init() {
 		GunBulletStyle:  BulletStyleTrail,
 		GunBulletWidth:  1.5,
 		GunBulletImpact: false,
+		GunFireSound:    FireSoundBurst,
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDGunMkI, Kind: PartGun,
@@ -72,6 +73,7 @@ func init() {
 		GunBulletStyle:  BulletStyleTrail,
 		GunBulletWidth:  2,
 		GunBulletImpact: false,
+		GunFireSound:    FireSoundBurst,
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDGunMkII, Kind: PartGun,
@@ -83,6 +85,7 @@ func init() {
 		GunBulletStyle:  BulletStyleTrail,
 		GunBulletWidth:  3,
 		GunBulletImpact: true,
+		GunFireSound:    FireSoundBurst,
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDGunRapid, Kind: PartGun,
@@ -94,6 +97,7 @@ func init() {
 		GunBulletStyle:  BulletStyleTrail,
 		GunBulletWidth:  1.2,
 		GunBulletImpact: false,
+		GunFireSound:    FireSoundBurst,
 	})
 	// Plasma Cannon: 大きなボール弾、低速・高威力、着弾エフェクトあり
 	registerPartDef(&PartDef{
@@ -106,6 +110,7 @@ func init() {
 		GunBulletStyle:  BulletStyleBall,
 		GunBulletWidth:  6,
 		GunBulletImpact: true,
+		GunFireSound:    FireSoundZap,
 	})
 	// Laser Pulse: 細く長いビーム、高速、着弾エフェクトあり
 	registerPartDef(&PartDef{
@@ -118,6 +123,7 @@ func init() {
 		GunBulletStyle:  BulletStyleLaser,
 		GunBulletWidth:  1.5,
 		GunBulletImpact: true,
+		GunFireSound:    FireSoundLaser,
 	})
 
 	// --- Thruster ---

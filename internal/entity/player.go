@@ -394,15 +394,18 @@ func (p *Player) Damage(amount int) {
 
 // Shoot はクールダウンが許せば各 Gun パーツから 1 発ずつ発射する。
 // 弾は各 Gun の Rotation に従う向きで射出され、発射位置はパーツの前端中心。
-// 戻り値: 通常弾 (Trail/Ball) と瞬間命中レーザー要求 (Laser スタイル) の 2 種に分かれる。
+// 戻り値: 通常弾 (Trail/Ball) と瞬間命中レーザー要求 (Laser スタイル)、および
+// この発射で鳴らすべき発射音の種類（重複は除去）の 3 つ。
 // クールダウンは発射に参加したガンの中で最も長いものを採用する（最遅ガンが律速）。
-// クールダウン中なら両方 nil。
-func (p *Player) Shoot() ([]Bullet, []LaserShot) {
+// クールダウン中なら全て nil。
+func (p *Player) Shoot() ([]Bullet, []LaserShot, []GunFireSound) {
 	if p.fireTimer > 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	var bullets []Bullet
 	var lasers []LaserShot
+	var fireSounds []GunFireSound
+	seenSound := map[GunFireSound]bool{}
 	sin, cos := math.Sin(p.Angle), math.Cos(p.Angle)
 	g := float64(GridSize)
 	halfG := g / 2
@@ -462,11 +465,15 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot) {
 		if d.GunCooldown > maxCooldown {
 			maxCooldown = d.GunCooldown
 		}
+		if s := d.GunFireSound; s != FireSoundNone && !seenSound[s] {
+			seenSound[s] = true
+			fireSounds = append(fireSounds, s)
+		}
 	}
 	if len(bullets)+len(lasers) > 0 {
 		p.fireTimer = maxCooldown
 	}
-	return bullets, lasers
+	return bullets, lasers, fireSounds
 }
 
 // AddSparePart はスペアパーツインベントリに id を qty 個加算する。

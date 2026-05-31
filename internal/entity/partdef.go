@@ -23,6 +23,8 @@ type PartDef struct {
 	GunBulletStyle  BulletStyle
 	GunBulletWidth  float64
 	GunBulletImpact bool
+	// GunFireSound: 発射時に鳴らす音の種類（シーン側で効果音にマップ）。
+	GunFireSound GunFireSound
 
 	// Thruster 用ステータス。Kind != PartThruster の def では未使用。
 	// 通常時は Accel と MaxSpeed を全スラスタで合算。
@@ -62,6 +64,17 @@ type PartDef struct {
 	AutoAimRange float64
 	AutoAimDPS   float64
 }
+
+// GunFireSound は発射音の種類。具体的な音色は asset/sound 側で生成し、
+// シーンがこの値を見て対応する効果音を再生する（entity は音を持たない）。
+type GunFireSound int
+
+const (
+	FireSoundNone  GunFireSound = iota // 無音（既定）
+	FireSoundBurst                     // 破裂音（Ball スタイルの通常弾）
+	FireSoundZap                       // ザップ音（Plasma）
+	FireSoundLaser                     // ノコギリ波のレーザー音
+)
 
 var (
 	partDefs     = map[PartID]*PartDef{}

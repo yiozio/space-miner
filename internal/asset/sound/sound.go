@@ -62,6 +62,8 @@ func initAudio() {
 
 	var burnerPCM, burnerFrames = generateBurnerPCM()
 	burnerSound = Sound{pcm: burnerPCM, frames: burnerFrames}
+
+	buildFireSounds()
 }
 
 // 回転音の合成パラメータ。OGG を読み込む代わりに正弦波＋ホワイトノイズを
