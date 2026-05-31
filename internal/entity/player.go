@@ -426,16 +426,19 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot, []GunFireSound) {
 		if p.gunFireTimers[key] > 0 {
 			continue
 		}
+		// 発射方向（ローカル）。描画と同じ回転規約 (x,y)→(-y,x) で前方ベクトル
+		// (0,-1) を Rotation ぶん回したもの。横向き(R=1/3)の左右は drawAfterburners
+		// の後方ベクトルと整合させる（前方＝後方の逆）。
 		var fxL, fyL float64
 		switch ((part.Rotation % 4) + 4) % 4 {
 		case 0:
 			fxL, fyL = 0, -1
 		case 1:
-			fxL, fyL = -1, 0
+			fxL, fyL = 1, 0
 		case 2:
 			fxL, fyL = 0, 1
 		case 3:
-			fxL, fyL = 1, 0
+			fxL, fyL = -1, 0
 		}
 		cxL := float64(part.GX) * g
 		cyL := float64(part.GY) * g
