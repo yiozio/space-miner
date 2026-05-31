@@ -7,28 +7,31 @@ import (
 	"time"
 )
 
-// weapon_fire.go は武器の発射効果音（ワンショット）を手続き的に合成して提供する。
+// weapon_fire.go は武器の発射・着弾効果音（ワンショット）を手続き的に合成して提供する。
 //
 //   - 破裂音（Burst）: 指数減衰するホワイトノイズの破裂。Ball スタイルの通常弾用。
 //   - ザップ音（Zap）  : 高→低へ掃引する低音ノコギリ波にビブラートを掛けた電子音。Plasma 用。
 //   - レーザー音（Laser）: 低音のノコギリ波＋ホワイトノイズに軽いアタックとサステイン。Laser 用。
+//   - 着弾音（Hit）    : 明るいノイズ＋軽い音程を高速減衰させた「パン」という当たり音。
 //
 // 再生は ebiten 公式 audio 例の playSE 同様、毎回プレイヤーを作って Play する
 // fire-and-forget 方式。再生中のプレイヤーは Context が保持し、終端で解放される
 // ため参照は持たない（同種音の重ね鳴りも可能）。
 
-// 発射音の合成済み PCM（初期化時に一度だけ構築）。
+// 効果音の合成済み PCM（初期化時に一度だけ構築）。
 var (
 	fireBurstPCM []byte
 	fireZapPCM   []byte
 	fireLaserPCM []byte
+	hitPCM       []byte
 )
 
-// 各発射音の再生音量（0.0〜1.0）。
+// 各効果音の再生音量（0.0〜1.0）。
 const (
 	fireBurstVol = 0.3
 	fireZapVol   = 0.3
 	fireLaserVol = 0.25
+	hitVol       = 0.35
 )
 
 // 破裂音の合成パラメータ。
@@ -58,18 +61,29 @@ const (
 	fireLaserRelease  = 40 * time.Millisecond  // 立ち下がり（残りはサステイン）
 )
 
-// buildFireSounds は全発射音 PCM を生成する。initAudio から呼ばれる。
-func buildFireSounds() {
+// 着弾音の合成パラメータ。
+const (
+	hitDur      = 90 * time.Millisecond // 全体長（短く弾ける）
+	hitDecay    = 12 * time.Millisecond // 指数減衰の時定数（速い＝スナップ感）
+	hitCut      = 6000.0                // ローパスのカットオフ [Hz]（明るめに残す）
+	hitToneFreq = 900.0                 // 芯になる音程成分 [Hz]
+	hitToneAmp  = 0.4                   // 音程成分の混合量
+)
+
+// buildWeaponSounds は全効果音 PCM を生成する。initAudio から呼ばれる。
+func buildWeaponSounds() {
 	fireBurstPCM = genBurstPCM()
 	fireZapPCM = genZapPCM()
 	fireLaserPCM = genLaserPCM()
+	hitPCM = genHitPCM()
 }
 
-// PlayFireBurst は破裂音を、PlayFireZap はザップ音を、PlayFireLaser はレーザー音を
-// それぞれワンショット再生する。
+// PlayFireBurst は破裂音を、PlayFireZap はザップ音を、PlayFireLaser はレーザー音を、
+// PlayHit は着弾音を、それぞれワンショット再生する。
 func PlayFireBurst() { playOneShot(fireBurstPCM, fireBurstVol) }
 func PlayFireZap()   { playOneShot(fireZapPCM, fireZapVol) }
 func PlayFireLaser() { playOneShot(fireLaserPCM, fireLaserVol) }
+func PlayHit()       { playOneShot(hitPCM, hitVol) }
 
 // playOneShot は pcm を新しいプレイヤーで一度だけ鳴らす（fire-and-forget）。
 func playOneShot(pcm []byte, vol float64) {
@@ -143,6 +157,27 @@ func genLaserPCM() []byte {
 			env = float32(n-1-i) / float32(rel)
 		}
 		mono[i] = (fireLaserSawAmp*saw + fireLaserNoiseAmp*white) * env
+	}
+	normalizeMono(mono, 0.9)
+	return monoToStereoPCM(mono)
+}
+
+// genHitPCM は明るいノイズに軽い音程成分を足し、高速減衰させた「パン」という
+// 着弾音を作る。減衰が速いほど鋭いスナップ音になる。
+func genHitPCM() []byte {
+	n := frameCount(hitDur)
+	mono := make([]float32, n)
+	rng := rand.New(rand.NewSource(17))
+	alpha := lowpassAlpha(hitCut)
+	tau := float64(hitDecay) / float64(time.Second)
+	step := 2 * math.Pi * hitToneFreq / sampleRate
+	var lp float32
+	for i := range n {
+		white := rng.Float32()*2 - 1
+		lp += alpha * (white - lp)
+		tone := float32(math.Sin(step * float64(i)))
+		env := float32(math.Exp(-float64(i) / sampleRate / tau))
+		mono[i] = (lp + hitToneAmp*tone) * env
 	}
 	normalizeMono(mono, 0.9)
 	return monoToStereoPCM(mono)

@@ -507,6 +507,7 @@ func (e *Exploration) Update(d Director) error {
 			impact := b.ImpactFX
 			bx, by := b.X, b.Y
 			e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
+			sound.PlayHit()
 			// AutoAim 対象更新はプレイヤー弾の命中時のみ
 			if !hostile && e.autoAimTarget != a {
 				e.autoAimTarget = a
@@ -1187,6 +1188,7 @@ func (e *Exploration) handlePlayerBulletsHitPirates() {
 			impact := b.ImpactFX
 			bx, by := b.X, b.Y
 			e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
+			sound.PlayHit()
 			if impact {
 				e.spawnImpact(bx, by, false)
 			}
@@ -1211,6 +1213,7 @@ func (e *Exploration) handleHostileBulletsHitPlayer() {
 		impact := b.ImpactFX
 		bx, by := b.X, b.Y
 		e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
+		sound.PlayHit()
 		if impact {
 			e.spawnImpact(bx, by, true)
 		}
