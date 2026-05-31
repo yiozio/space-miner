@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
+	"github.com/yiozio/space-miner/internal/asset/sound"
 	"github.com/yiozio/space-miner/internal/entity"
 	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
@@ -63,6 +64,8 @@ func (se *StationEditor) Update(d Director) error {
 		return nil
 	}
 
+	oldGX, oldGY, oldPal := se.cursorGX, se.cursorGY, se.paletteIx
+
 	// カーソル移動
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
 		if se.cursorGY > -editorGridHalf {
@@ -98,6 +101,10 @@ func (se *StationEditor) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyE) && len(se.palette) > 0 {
 		se.paletteIx = (se.paletteIx + 1) % len(se.palette)
 	}
+	// カーソルかパレット選択が動いたら移動音。
+	if se.cursorGX != oldGX || se.cursorGY != oldGY || se.paletteIx != oldPal {
+		sound.PlayMenuMove()
+	}
 
 	// 回転: R キー
 	//   - カーソル上に配置済みパーツがあればそれを 90° 回転
@@ -115,11 +122,15 @@ func (se *StationEditor) Update(d Director) error {
 
 	// 配置
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-		se.tryPlace()
+		if se.tryPlace() {
+			sound.PlayMenuSelect()
+		}
 	}
 	// 取り外し
 	if inpututil.IsKeyJustPressed(ebiten.KeyX) || inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
-		se.tryRemove()
+		if se.tryRemove() {
+			sound.PlayMenuSelect()
+		}
 	}
 	return nil
 }
@@ -135,16 +146,17 @@ func (se *StationEditor) partAtCursor() int {
 }
 
 // tryPlace はカーソル位置が空かつ選択パーツの在庫があれば設置する。
-func (se *StationEditor) tryPlace() {
+// tryPlace は配置に成功したら true を返す。
+func (se *StationEditor) tryPlace() bool {
 	def := se.selectedDef()
 	if def == nil {
-		return
+		return false
 	}
 	if se.player.PartsInventory[def.ID] <= 0 {
-		return
+		return false
 	}
 	if se.partAtCursor() >= 0 {
-		return
+		return false
 	}
 	se.player.Parts = append(se.player.Parts, entity.Part{
 		DefID:    def.ID,
@@ -154,22 +166,24 @@ func (se *StationEditor) tryPlace() {
 	})
 	se.player.PartsInventory[def.ID]--
 	se.player.OnPartsChanged()
+	return true
 }
 
 // tryRemove はカーソル位置のパーツを取り外し、PartsInventory に戻す。
-// コックピットは取り外せない。
-func (se *StationEditor) tryRemove() {
+// コックピットは取り外せない。取り外しに成功したら true を返す。
+func (se *StationEditor) tryRemove() bool {
 	i := se.partAtCursor()
 	if i < 0 {
-		return
+		return false
 	}
 	p := se.player.Parts[i]
 	if p.Kind() == entity.PartCockpit {
-		return
+		return false
 	}
 	se.player.Parts = append(se.player.Parts[:i], se.player.Parts[i+1:]...)
 	se.player.PartsInventory[p.DefID]++
 	se.player.OnPartsChanged()
+	return true
 }
 
 func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {

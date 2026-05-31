@@ -7,6 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/yiozio/space-miner/internal/asset/sound"
 	"github.com/yiozio/space-miner/internal/entity"
 	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
@@ -67,12 +68,14 @@ func (s *StarMap) Update(d Director) error {
 		inpututil.IsKeyJustPressed(ebiten.KeyS) ||
 		inpututil.IsKeyJustPressed(ebiten.KeyD) {
 		s.cursor = (s.cursor + 1) % len(s.targets)
+		sound.PlayMenuMove()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) ||
 		inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) ||
 		inpututil.IsKeyJustPressed(ebiten.KeyW) ||
 		inpututil.IsKeyJustPressed(ebiten.KeyA) {
 		s.cursor = (s.cursor - 1 + len(s.targets)) % len(s.targets)
+		sound.PlayMenuMove()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) ||
 		inpututil.IsKeyJustPressed(ebiten.KeySpace) {
@@ -83,6 +86,7 @@ func (s *StarMap) Update(d Director) error {
 		if dest.Name == s.currentMap {
 			return nil // 同地ワープは無効
 		}
+		sound.PlayMenuSelect()
 		if s.onWarp != nil && s.onWarp(d, dest) {
 			d.Pop()
 		}

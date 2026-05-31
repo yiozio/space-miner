@@ -4,6 +4,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/yiozio/space-miner/internal/asset/sound"
 )
 
 // MenuItem はメニューの1項目。Values が nil なら通常項目（決定で選択）、
@@ -35,9 +36,11 @@ func (m *Menu) Update() MenuResult {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
 		m.moveCursor(-1)
+		sound.PlayMenuMove()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
 		m.moveCursor(1)
+		sound.PlayMenuMove()
 	}
 	cur := m.Items[m.Cursor]
 	if !cur.Enabled {
@@ -47,14 +50,17 @@ func (m *Menu) Update() MenuResult {
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
 			cur.ValueIndex = (cur.ValueIndex - 1 + len(cur.Values)) % len(cur.Values)
 			r.ValueChanged = true
+			sound.PlayMenuMove()
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
 			cur.ValueIndex = (cur.ValueIndex + 1) % len(cur.Values)
 			r.ValueChanged = true
+			sound.PlayMenuMove()
 		}
 	} else {
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			r.Activated = true
+			sound.PlayMenuSelect()
 		}
 	}
 	return r

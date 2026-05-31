@@ -10,6 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
+	"github.com/yiozio/space-miner/internal/asset/sound"
 	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/save"
 	"github.com/yiozio/space-miner/internal/ui"
@@ -91,11 +92,14 @@ func (s *SaveSlotPicker) Update(d Director) error {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
 		s.moveCursor(-1)
+		sound.PlayMenuMove()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
 		s.moveCursor(+1)
+		sound.PlayMenuMove()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		sound.PlayMenuSelect()
 		s.activate(d)
 	}
 	return nil

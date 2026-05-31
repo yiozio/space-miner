@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
+	"github.com/yiozio/space-miner/internal/asset/sound"
 	"github.com/yiozio/space-miner/internal/entity"
 	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
@@ -142,6 +143,7 @@ func (ss *StationShop) Update(d Director) error {
 
 	row := ss.index / shopGridCols
 	col := ss.index % shopGridCols
+	oldIndex, oldSide := ss.index, ss.side
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
 		if row > 0 {
@@ -173,8 +175,12 @@ func (ss *StationShop) Update(d Director) error {
 		ss.side = 1 - ss.side
 	}
 	ss.index = row*shopGridCols + col
+	if ss.index != oldIndex || ss.side != oldSide {
+		sound.PlayMenuMove()
+	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		sound.PlayMenuSelect()
 		ss.transferOne()
 	}
 	return nil

@@ -10,6 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
+	"github.com/yiozio/space-miner/internal/asset/sound"
 	"github.com/yiozio/space-miner/internal/entity"
 	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
@@ -48,11 +49,13 @@ func (s *StationTavern) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
 		if s.cursor > 0 {
 			s.cursor--
+			sound.PlayMenuMove()
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
 		if s.cursor < 2 {
 			s.cursor++
+			sound.PlayMenuMove()
 		}
 	}
 	board := s.player.EnsureTavernBoard(s.stationName, s.world, s.rng)
@@ -63,6 +66,7 @@ func (s *StationTavern) Update(d Director) error {
 		if !q.IsEmpty() && s.player.CanClearQuest(q) && s.player.CanReceiveReward(q) {
 			s.player.ClearQuest(q)
 			s.player.RegenerateSlot(s.stationName, s.cursor, s.world, s.rng)
+			sound.PlayMenuSelect()
 		}
 	}
 
