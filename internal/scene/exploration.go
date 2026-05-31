@@ -205,6 +205,7 @@ func (e *Exploration) applyAutoAim() {
 	}
 	if destroyed {
 		e.pickups = append(e.pickups, pk)
+		sound.PlayAsteroidBreak()
 		if len(a.Grids) == 0 {
 			e.autoAimTarget = nil
 			e.autoAimGridIdx = -1
@@ -519,6 +520,9 @@ func (e *Exploration) Update(d Director) error {
 			bx, by := b.X, b.Y
 			e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
 			sound.PlayHit()
+			if len(drops) > 0 {
+				sound.PlayAsteroidBreak()
+			}
 			// AutoAim 対象更新はプレイヤー弾の命中時のみ
 			if !hostile && e.autoAimTarget != a {
 				e.autoAimTarget = a
@@ -1389,6 +1393,7 @@ func (e *Exploration) fireLaser(l entity.LaserShot) {
 		destroyed, pk, _ := asteroidHit.a.HitGrid(asteroidHit.idx, l.Damage)
 		if destroyed {
 			e.pickups = append(e.pickups, pk)
+			sound.PlayAsteroidBreak()
 		}
 	} else if pirateIdx >= 0 {
 		e.pirates[pirateIdx].TakeHit(l.Damage)
@@ -1442,10 +1447,11 @@ func (e *Exploration) cullPiratesAndDrop() {
 	for _, pr := range e.pirates {
 		if pr.HP <= 0 {
 			e.dropPirateLoot(pr)
-			// 撃墜時の爆発エフェクト
+			// 撃墜時の爆発エフェクトと爆発音
 			explosionColor := color.NRGBA{0xff, 0x80, 0x40, 0xff}
 			e.explosions = append(e.explosions,
 				entity.NewExplosion(pr.X, pr.Y, explosionColor, e.spawnRng))
+			sound.PlayExplosion()
 			if pm := e.world.Containing(pr.X, pr.Y); pm != nil {
 				if e.player.PiratesKilledByMap == nil {
 					e.player.PiratesKilledByMap = make(map[string]int)

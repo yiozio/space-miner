@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// weapon_fire.go は武器の発射・着弾効果音（ワンショット）を手続き的に合成して提供する。
+// weapon_fire.go はゲームの効果音（ワンショット）を手続き的に合成して提供する。
 //
 //   - 破裂音（Burst）: 指数減衰するホワイトノイズの破裂。Ball スタイルの通常弾用。
 //   - ザップ音（Zap）  : 高→低へ掃引する低音ノコギリ波にビブラートを掛けた電子音。Plasma 用。
@@ -15,6 +15,8 @@ import (
 //   - 着弾音（Hit）    : 明るいノイズ＋軽い音程を高速減衰させた「パン」という当たり音。
 //   - 被ダメージ音（Damage）: 低い正弦波が下降する「ダンッ」という被弾・衝突音（シールド有）。
 //   - 被ダメージ破裂音（DamageBurst）: 着弾音より低く少し長い破裂音（シールド無＝直接被弾）。
+//   - 小惑星破壊音（AsteroidBreak）: こもったノイズの「ガッ」という岩の砕け音。
+//   - 爆発音（Explosion）: 低い轟音＋ノイズが長めに尾を引く海賊撃破時の爆発。
 //
 // 再生は ebiten 公式 audio 例の playSE 同様、毎回プレイヤーを作って Play する
 // fire-and-forget 方式。再生中のプレイヤーは Context が保持し、終端で解放される
@@ -22,22 +24,26 @@ import (
 
 // 効果音の合成済み PCM（初期化時に一度だけ構築）。
 var (
-	fireBurstPCM   []byte
-	fireZapPCM     []byte
-	fireLaserPCM   []byte
-	hitPCM         []byte
-	damagePCM      []byte
-	damageBurstPCM []byte
+	fireBurstPCM     []byte
+	fireZapPCM       []byte
+	fireLaserPCM     []byte
+	hitPCM           []byte
+	damagePCM        []byte
+	damageBurstPCM   []byte
+	asteroidBreakPCM []byte
+	explosionPCM     []byte
 )
 
 // 各効果音の再生音量（0.0〜1.0）。
 const (
-	fireBurstVol   = 0.3
-	fireZapVol     = 0.3
-	fireLaserVol   = 0.25
-	hitVol         = 0.35
-	damageVol      = 0.4
-	damageBurstVol = 0.4
+	fireBurstVol     = 0.3
+	fireZapVol       = 0.3
+	fireLaserVol     = 0.25
+	hitVol           = 0.35
+	damageVol        = 0.4
+	damageBurstVol   = 0.4
+	asteroidBreakVol = 0.35
+	explosionVol     = 0.5
 )
 
 // 破裂音の合成パラメータ。
@@ -95,6 +101,23 @@ const (
 	damageBurstToneAmp  = 0.35                   // 音程成分の混合量
 )
 
+// 小惑星破壊音の合成パラメータ。こもったノイズの岩の砕け音。
+const (
+	asteroidBreakDur   = 130 * time.Millisecond // 全体長
+	asteroidBreakDecay = 28 * time.Millisecond  // 指数減衰の時定数
+	asteroidBreakCut   = 2500.0                 // ローパスのカットオフ [Hz]
+)
+
+// 爆発音の合成パラメータ。低い轟音＋ノイズが長めに尾を引く。
+const (
+	explosionDur     = 500 * time.Millisecond // 全体長（長めに尾を引く）
+	explosionDecay   = 150 * time.Millisecond // 指数減衰の時定数
+	explosionCut     = 1500.0                 // ノイズのローパス [Hz]
+	explosionBoomHi  = 90.0                   // 轟音の開始周波数 [Hz]（下降）
+	explosionBoomLo  = 40.0                   // 轟音の終了周波数 [Hz]
+	explosionBoomAmp = 0.6                    // 轟音（低音正弦）の混合量
+)
+
 // buildSfx は全効果音 PCM を生成する。initAudio から呼ばれる。
 func buildSfx() {
 	fireBurstPCM = genBurstPCM()
@@ -103,16 +126,20 @@ func buildSfx() {
 	hitPCM = genHitPCM()
 	damagePCM = genDamagePCM()
 	damageBurstPCM = genDamageBurstPCM()
+	asteroidBreakPCM = genAsteroidBreakPCM()
+	explosionPCM = genExplosionPCM()
 }
 
 // PlayFireBurst は破裂音を、PlayFireZap はザップ音を、PlayFireLaser はレーザー音を、
 // PlayHit は着弾音を、それぞれワンショット再生する。
-func PlayFireBurst()   { playOneShot(fireBurstPCM, fireBurstVol) }
-func PlayFireZap()     { playOneShot(fireZapPCM, fireZapVol) }
-func PlayFireLaser()   { playOneShot(fireLaserPCM, fireLaserVol) }
-func PlayHit()         { playOneShot(hitPCM, hitVol) }
-func PlayDamage()      { playOneShot(damagePCM, damageVol) }
-func PlayDamageBurst() { playOneShot(damageBurstPCM, damageBurstVol) }
+func PlayFireBurst()     { playOneShot(fireBurstPCM, fireBurstVol) }
+func PlayFireZap()       { playOneShot(fireZapPCM, fireZapVol) }
+func PlayFireLaser()     { playOneShot(fireLaserPCM, fireLaserVol) }
+func PlayHit()           { playOneShot(hitPCM, hitVol) }
+func PlayDamage()        { playOneShot(damagePCM, damageVol) }
+func PlayDamageBurst()   { playOneShot(damageBurstPCM, damageBurstVol) }
+func PlayAsteroidBreak() { playOneShot(asteroidBreakPCM, asteroidBreakVol) }
+func PlayExplosion()     { playOneShot(explosionPCM, explosionVol) }
 
 // playOneShot は pcm を新しいプレイヤーで一度だけ鳴らす（fire-and-forget）。
 func playOneShot(pcm []byte, vol float64) {
@@ -253,6 +280,49 @@ func genDamageBurstPCM() []byte {
 		tone := float32(math.Sin(step * float64(i)))
 		env := float32(math.Exp(-float64(i) / sampleRate / tau))
 		mono[i] = (lp + damageBurstToneAmp*tone) * env
+	}
+	normalizeMono(mono, 0.9)
+	return monoToStereoPCM(mono)
+}
+
+// genAsteroidBreakPCM はこもったノイズを高速減衰させた岩の砕け音を作る。
+func genAsteroidBreakPCM() []byte {
+	n := frameCount(asteroidBreakDur)
+	mono := make([]float32, n)
+	rng := rand.New(rand.NewSource(29))
+	alpha := lowpassAlpha(asteroidBreakCut)
+	tau := float64(asteroidBreakDecay) / float64(time.Second)
+	var lp float32
+	for i := range n {
+		white := rng.Float32()*2 - 1
+		lp += alpha * (white - lp)
+		env := float32(math.Exp(-float64(i) / sampleRate / tau))
+		mono[i] = lp * env
+	}
+	normalizeMono(mono, 0.9)
+	return monoToStereoPCM(mono)
+}
+
+// genExplosionPCM は下降する低音正弦（轟音）に低域ノイズを混ぜ、長めに尾を引く
+// 指数減衰を掛けて爆発音を作る。
+func genExplosionPCM() []byte {
+	n := frameCount(explosionDur)
+	mono := make([]float32, n)
+	rng := rand.New(rand.NewSource(31))
+	alpha := lowpassAlpha(explosionCut)
+	tau := float64(explosionDecay) / float64(time.Second)
+	var lp float32
+	var phase float64 // 0〜1 に正規化した正弦位相
+	for i := range n {
+		frac := float64(i) / float64(n-1) // 0→1
+		white := rng.Float32()*2 - 1
+		lp += alpha * (white - lp)
+		freq := explosionBoomHi + (explosionBoomLo-explosionBoomHi)*frac
+		phase += freq / sampleRate
+		phase -= math.Floor(phase)
+		boom := float32(math.Sin(2 * math.Pi * phase))
+		env := float32(math.Exp(-float64(i) / sampleRate / tau))
+		mono[i] = (lp + explosionBoomAmp*boom) * env
 	}
 	normalizeMono(mono, 0.9)
 	return monoToStereoPCM(mono)
