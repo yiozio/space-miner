@@ -197,6 +197,17 @@ func (p *Pirate) DrawAt(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
 	vector.StrokeCircle(dst, float32(sx), float32(sy), 30, 1.5, pirateLineColor, true)
 }
 
+// DrawShipAt は識別リング無しで機体画像だけを (sx, sy) 中心に描画する。
+// タイトル背景など、敵 HUD を出したくない場面で使う。
+func (p *Pirate) DrawShipAt(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
+	p.ensureImage(theme)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(-p.imgOffsetX, -p.imgOffsetY)
+	op.GeoM.Rotate(p.Angle + math.Pi/2)
+	op.GeoM.Translate(sx, sy)
+	dst.DrawImage(p.image, op)
+}
+
 func (p *Pirate) ensureImage(theme *ui.Theme) {
 	if p.cachedTheme == theme && p.image != nil {
 		return

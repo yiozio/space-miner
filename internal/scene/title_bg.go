@@ -1,0 +1,159 @@
+package scene
+
+import (
+	"image/color"
+	"math"
+	"math/rand"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/yiozio/space-miner/internal/entity"
+	"github.com/yiozio/space-miner/internal/ui"
+)
+
+// title_bg.go はタイトル画面の動く背景を提供する。
+// 左上に青い惑星＋星々、ランダムな小惑星が回転しながら漂い、たまに海賊船が横切る。
+
+// タイトル背景の画面サイズ（ゲームの固定解像度）。
+const (
+	titleScreenW = 1280
+	titleScreenH = 720
+)
+
+// 左上に置く青い惑星。
+var titlePlanetColor = color.NRGBA{0x60, 0xa0, 0xff, 0xff}
+
+const (
+	titlePlanetX = 180
+	titlePlanetY = 150
+	titlePlanetR = 150
+)
+
+const titleAsteroidCount = 6
+
+// titleBackground はタイトル画面の動く背景（星・惑星・漂う小惑星・たまに通る海賊船）。
+type titleBackground struct {
+	rng         *rand.Rand
+	starfield   *starfield
+	asteroids   []*entity.Asteroid
+	pirate      *entity.Pirate // nil なら不在
+	pirateTimer int            // 次の海賊出現までの残フレーム
+}
+
+func newTitleBackground() *titleBackground {
+	rng := rand.New(rand.NewSource(1))
+	bg := &titleBackground{
+		rng:         rng,
+		starfield:   newStarfield(1),
+		pirateTimer: 180 + rng.Intn(360),
+	}
+	for range titleAsteroidCount {
+		bg.asteroids = append(bg.asteroids, bg.newAsteroid())
+	}
+	return bg
+}
+
+// newAsteroid はランダムな位置・自転・ゆるい漂流速度の小惑星を作る。
+func (bg *titleBackground) newAsteroid() *entity.Asteroid {
+	x := bg.rng.Float64() * titleScreenW
+	y := bg.rng.Float64() * titleScreenH
+	size := 2 + bg.rng.Intn(5) // 2..6 セル
+	res := entity.AllResourceTypes()[bg.rng.Intn(3)]
+	a := entity.NewAsteroid(bg.rng.Int63(), x, y, size, res)
+	// 漂流速度と自転を背景向けに上書き（ゆっくり漂って回る）。
+	ang := bg.rng.Float64() * 2 * math.Pi
+	sp := 0.3 + bg.rng.Float64()*0.6
+	a.VX = math.Cos(ang) * sp
+	a.VY = math.Sin(ang) * sp
+	a.AngularVel = (bg.rng.Float64()*2 - 1) * 0.01
+	return a
+}
+
+func (bg *titleBackground) update() {
+	for _, a := range bg.asteroids {
+		a.Update()
+		titleWrap(&a.X, &a.Y)
+	}
+	if bg.pirate != nil {
+		bg.pirate.X += bg.pirate.VX
+		bg.pirate.Y += bg.pirate.VY
+		if titleOffscreen(bg.pirate.X, bg.pirate.Y, 140) {
+			bg.pirate = nil
+			bg.pirateTimer = 360 + bg.rng.Intn(600) // 6〜16 秒後にまた出す
+		}
+		return
+	}
+	bg.pirateTimer--
+	if bg.pirateTimer <= 0 {
+		bg.spawnPirate()
+	}
+}
+
+// spawnPirate は画面の左右どちらかの外から、反対側へ横切る海賊船を出す。
+func (bg *titleBackground) spawnPirate() {
+	ids := []entity.PiratePatternID{
+		entity.PiratePatternScout, entity.PiratePatternBrawler, entity.PiratePatternCruiser,
+	}
+	pat := entity.PiratePatternByID(ids[bg.rng.Intn(len(ids))])
+	speed := 1.5 + bg.rng.Float64()*1.5
+	y := 80 + bg.rng.Float64()*(titleScreenH-160)
+	var x, vx float64
+	if bg.rng.Intn(2) == 0 {
+		x, vx = -120, speed
+	} else {
+		x, vx = titleScreenW+120, -speed
+	}
+	vy := (bg.rng.Float64()*2 - 1) * 0.4
+	// NewPirate は (playerX,playerY) の方を向くので、進行方向の遠点を渡して機首を合わせる。
+	p := entity.NewPirate(x, y, x+vx*1000, y+vy*1000, pat)
+	p.VX, p.VY = vx, vy
+	bg.pirate = p
+}
+
+func (bg *titleBackground) draw(dst *ebiten.Image, theme *ui.Theme) {
+	bg.starfield.draw(dst, 0, 0, theme)
+	drawTitlePlanet(dst, titlePlanetX, titlePlanetY, titlePlanetR, titlePlanetColor)
+	for _, a := range bg.asteroids {
+		a.Draw(dst, a.X, a.Y)
+	}
+	if bg.pirate != nil {
+		bg.pirate.DrawShipAt(dst, bg.pirate.X, bg.pirate.Y, theme)
+	}
+}
+
+// titleWrap は画面外（余白込み）に出た座標を反対側へ回り込ませる（漂流を継続させる）。
+func titleWrap(x, y *float64) {
+	const m = 80
+	switch {
+	case *x < -m:
+		*x = titleScreenW + m
+	case *x > titleScreenW+m:
+		*x = -m
+	}
+	switch {
+	case *y < -m:
+		*y = titleScreenH + m
+	case *y > titleScreenH+m:
+		*y = -m
+	}
+}
+
+func titleOffscreen(x, y, m float64) bool {
+	return x < -m || x > titleScreenW+m || y < -m || y > titleScreenH+m
+}
+
+// drawTitlePlanet は drawCelestialBackdrop と同じ陰影で惑星を1つ描く（左上の青い惑星用）。
+func drawTitlePlanet(dst *ebiten.Image, cx, cy, r float32, base color.NRGBA) {
+	dark := scaleColor(base, 0.9)
+	dark.A = 255
+	vector.DrawFilledCircle(dst, cx, cy, r, dark, true)
+	lit := base
+	lit.A = 255
+	vector.DrawFilledCircle(dst, cx-r*0.15, cy-r*0.15, r*0.78, lit, true)
+	hi := scaleColor(base, 1.35)
+	hi.A = 220
+	vector.DrawFilledCircle(dst, cx-r*0.42, cy-r*0.42, r*0.2, hi, true)
+	rim := scaleColor(base, 0.7)
+	rim.A = 255
+	vector.StrokeCircle(dst, cx, cy, r, 1.0, rim, true)
+}

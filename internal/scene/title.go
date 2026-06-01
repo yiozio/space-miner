@@ -13,6 +13,7 @@ import (
 // Title はスタート画面シーン。
 type Title struct {
 	menu *ui.Menu
+	bg   *titleBackground
 }
 
 const (
@@ -42,6 +43,7 @@ func NewTitle() *Title {
 			},
 			Cursor: cursor,
 		},
+		bg: newTitleBackground(),
 	}
 	tl.applyLabels()
 	return tl
@@ -61,6 +63,7 @@ func (t *Title) applyLabels() {
 
 func (t *Title) Update(d Director) error {
 	t.applyLabels()
+	t.bg.update()
 	r := t.menu.Update()
 	if !r.Activated {
 		return nil
@@ -97,6 +100,7 @@ func (t *Title) Update(d Director) error {
 func (t *Title) Draw(dst *ebiten.Image, d Director) {
 	theme := d.Theme()
 	dst.Fill(theme.Background)
+	t.bg.draw(dst, theme)
 
 	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
 	s := i18n.S().Title
