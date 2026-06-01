@@ -40,12 +40,50 @@ type Ship struct {
 	ThrustState     ThrustState
 	ThrustActiveDir ThrustActiveDir // 現在炎を出しているスラスタ方向（Forward/Backward）
 
+	// Trail は直近の通過位置（古い順、ワールド座標）。描画側が尾を引く軌跡に使う。
+	Trail []TrailPoint
+
 	// 描画キャッシュ。テーマ変更時に再生成する。
 	cachedTheme  *ui.Theme
 	image        *ebiten.Image
 	imageOffsetX float64 // 画像内のコックピット中心 X
 	imageOffsetY float64 // 画像内のコックピット中心 Y
 }
+
+// cockpitPivotFracY はコックピット三角形（頂点が上・底辺が下）の重心の、
+// セル上端からの y 比率。回転中心・軌跡・光点をこの重心に合わせる。
+// 三角形の頂点 y 比は (0.12, 0.88, 0.88)（drawPartRaw の inset=0.12 に対応）。
+const cockpitPivotFracY = (0.12 + 0.88 + 0.88) / 3.0
+
+// TrailPoint は軌跡の1点（ワールド座標）。
+type TrailPoint struct{ X, Y float64 }
+
+// 軌跡の保持点数と、点を追加する最小移動距離（px）。
+// 距離で間引くことで、停止中に同じ点が溜まらず、速度に依らず一定の見た目になる。
+const (
+	shipTrailMax     = 30
+	shipTrailSpacing = 8.0
+)
+
+// PushTrail は前回の点から十分動いていれば現在位置を軌跡に追加する。
+// Player.Update / Pirate.Update など、機体を動かした後に毎フレーム呼ぶ。
+func (s *Ship) PushTrail() {
+	if n := len(s.Trail); n > 0 {
+		dx := s.X - s.Trail[n-1].X
+		dy := s.Y - s.Trail[n-1].Y
+		if dx*dx+dy*dy < shipTrailSpacing*shipTrailSpacing {
+			return
+		}
+	}
+	s.Trail = append(s.Trail, TrailPoint{s.X, s.Y})
+	if len(s.Trail) > shipTrailMax {
+		copy(s.Trail, s.Trail[len(s.Trail)-shipTrailMax:])
+		s.Trail = s.Trail[:shipTrailMax]
+	}
+}
+
+// ClearTrail は軌跡を消す。ワープなどの瞬間移動で尾が伸びるのを防ぐ。
+func (s *Ship) ClearTrail() { s.Trail = s.Trail[:0] }
 
 // InvalidateImage は船体画像のキャッシュを破棄する。
 // パーツ構成が変わった（編集された）場合に呼ぶ。
@@ -69,9 +107,9 @@ func (s *Ship) ensureImage(theme *ui.Theme) {
 		DrawPart(img, p.Kind(), x, y, float32(GridSize), theme, p.Rotation)
 	}
 	s.image = img
-	// コックピット (GX=0, GY=0) のセル中心を回転中心とする
+	// コックピット (GX=0, GY=0) 三角形の重心を回転中心とする（軌跡・光点もここに揃う）
 	s.imageOffsetX = float64(-minGX*GridSize) + float64(GridSize)/2
-	s.imageOffsetY = float64(-minGY*GridSize) + float64(GridSize)/2
+	s.imageOffsetY = float64(-minGY*GridSize) + float64(GridSize)*cockpitPivotFracY
 	s.cachedTheme = theme
 }
 

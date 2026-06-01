@@ -77,6 +77,7 @@ func (bg *titleBackground) update() {
 	if bg.pirate != nil {
 		bg.pirate.X += bg.pirate.VX
 		bg.pirate.Y += bg.pirate.VY
+		bg.pirate.PushTrail()
 		if titleOffscreen(bg.pirate.X, bg.pirate.Y, 140) {
 			bg.pirate = nil
 			bg.pirateTimer = 360 + bg.rng.Intn(600) // 6〜16 秒後にまた出す
@@ -117,7 +118,9 @@ func (bg *titleBackground) draw(dst *ebiten.Image, theme *ui.Theme) {
 		a.Draw(dst, a.X, a.Y)
 	}
 	if bg.pirate != nil {
+		drawShipTrail(dst, bg.pirate.Trail, 0, 0, pirateTrailColor)
 		bg.pirate.DrawShipAt(dst, bg.pirate.X, bg.pirate.Y, theme)
+		drawTrailLight(dst, bg.pirate.X, bg.pirate.Y, pirateTrailColor)
 	}
 }
 

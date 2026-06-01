@@ -224,8 +224,9 @@ func (p *Pirate) ensureImage(theme *ui.Theme) {
 		DrawPart(img, part.Kind(), x, y, float32(GridSize), &pirateTheme, part.Rotation)
 	}
 	p.image = img
+	// コックピット三角形の重心を回転中心とする（軌跡・光点もここに揃う）
 	p.imgOffsetX = float64(-minGX*GridSize) + float64(GridSize)/2
-	p.imgOffsetY = float64(-minGY*GridSize) + float64(GridSize)/2
+	p.imgOffsetY = float64(-minGY*GridSize) + float64(GridSize)*cockpitPivotFracY
 	p.cachedTheme = theme
 }
 

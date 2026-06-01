@@ -365,6 +365,7 @@ func (e *Exploration) Update(d Director) error {
 	}
 
 	e.player.Update()
+	e.player.PushTrail()
 	e.rotationSound.Update(isRotationKeyPressed())
 	e.burnerSound.Update(e.player.ThrustState != entity.ThrustOff, e.player.ThrustState == entity.ThrustBoost)
 	e.playtime += 1.0 / 60.0 // ebitengine 既定 TPS（60）想定の累計プレイ時間
@@ -386,6 +387,7 @@ func (e *Exploration) Update(d Director) error {
 	// 海賊 AI: 各機が旋回・追跡・発射し、敵弾とレーザー要求を処理する
 	for _, pr := range e.pirates {
 		bullets, lasers := pr.Update(e.player.X, e.player.Y)
+		pr.PushTrail()
 		if len(bullets) > 0 {
 			e.bullets = append(e.bullets, bullets...)
 		}
@@ -816,9 +818,12 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		a.Draw(dst, a.X-e.cameraX+cx, a.Y-e.cameraY+cy)
 	}
 
-	// 海賊（赤アクセントの船体 + 識別リング）
+	// 海賊（赤アクセントの船体 + 識別リング）。軌跡を船体の下に描く。
 	for _, pr := range e.pirates {
-		pr.DrawAt(dst, pr.X-e.cameraX+cx, pr.Y-e.cameraY+cy, theme)
+		psx, psy := pr.X-e.cameraX+cx, pr.Y-e.cameraY+cy
+		drawShipTrail(dst, pr.Trail, -e.cameraX+cx, -e.cameraY+cy, pirateTrailColor)
+		pr.DrawAt(dst, psx, psy, theme)
+		drawTrailLight(dst, psx, psy, pirateTrailColor)
 	}
 
 	// ピックアップ
@@ -864,10 +869,12 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		vector.StrokeLine(dst, x1, y1, x2, y2, 1.5, beamColor, false)
 	}
 
-	// プレイヤー
+	// プレイヤー（軌跡を船体の下に描く）
 	psx := e.player.X - e.cameraX + cx
 	psy := e.player.Y - e.cameraY + cy
+	drawShipTrail(dst, e.player.Trail, -e.cameraX+cx, -e.cameraY+cy, theme.Line)
 	e.player.DrawAt(dst, psx, psy, theme)
+	drawTrailLight(dst, psx, psy, theme.Line)
 	// シールドが 1 以上なら、外周（隣接面以外）を描画
 	if e.player.ShieldHP > 0 {
 		e.player.Ship.DrawShieldOutline(dst, psx, psy, theme)
@@ -1076,6 +1083,7 @@ func (e *Exploration) tickWarp() {
 			e.player.Y = dest.CY
 			e.player.VX = 0
 			e.player.VY = 0
+			e.player.ClearTrail() // テレポートで軌跡が伸びないよう消す
 			e.lastMap = dest
 			// ワープ前の局所状態（小惑星・ピックアップ・弾・海賊・着弾・爆発・自動照準）は持ち越さない
 			e.asteroids = e.asteroids[:0]
@@ -1134,6 +1142,41 @@ func (e *Exploration) drawWarpOverlay(dst *ebiten.Image, theme *ui.Theme, sw, sh
 // 設計どおりの位置に見え、自機が動いても少しだけしか流れないようにする。
 // 不透明な惑星らしさを出すため、暗いベースの上に光源側（左上）へオフセットした
 // 明部とハイライトを重ね、輪郭はやや暗めにして遠景の球体感を演出する。
+// pirateTrailColor は海賊船の軌跡色（船体と同じ赤系）。
+var pirateTrailColor = color.NRGBA{0xff, 0x60, 0x40, 0xff}
+
+const (
+	shipTrailAlpha = 0.45 // 軌跡の最大不透明度（新しい点ほどこれに近づく）
+	shipTrailWidth = 2.0
+)
+
+// drawShipTrail は船の軌跡を、古いほど薄くなる線分列として描く。
+// (offX, offY) はワールド座標→スクリーン座標の加算オフセット。
+func drawShipTrail(dst *ebiten.Image, trail []entity.TrailPoint, offX, offY float64, c color.NRGBA) {
+	n := len(trail)
+	if n < 2 {
+		return
+	}
+	for i := 1; i < n; i++ {
+		a, b := trail[i-1], trail[i]
+		frac := float64(i) / float64(n-1) // 新しいほど 1 に近い＝濃い
+		cc := c
+		cc.A = uint8(float64(c.A) * frac * shipTrailAlpha)
+		vector.StrokeLine(dst,
+			float32(a.X+offX), float32(a.Y+offY),
+			float32(b.X+offX), float32(b.Y+offY),
+			shipTrailWidth, cc, true)
+	}
+}
+
+// drawTrailLight は軌跡の発生点（機体中心）に、幅 4〜6px で明滅する光点を描く。
+func drawTrailLight(dst *ebiten.Image, sx, sy float64, c color.NRGBA) {
+	w := 4 + rand.Float64()*2 // 幅 4〜6px に毎フレーム明滅（またたき）
+	lit := scaleColor(c, 1.3)
+	lit.A = 255
+	vector.DrawFilledCircle(dst, float32(sx), float32(sy), float32(w/2), lit, true)
+}
+
 func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
 	mapCX, mapCY, cameraX, cameraY, screenCX, screenCY float64) {
 	if body == nil || body.BackdropRadius <= 0 {
