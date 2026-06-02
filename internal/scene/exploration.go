@@ -118,6 +118,7 @@ func NewExploration() *Exploration {
 // 累計プレイ時間で探索シーンを生成する。World 定義は固定で entity.DefaultWorld()。
 // 小惑星はゾーン定義に従って実行時に逐次スポーンされるため、開始時には生成しない。
 func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
+	sound.StopBGM() // タイトル BGM を止めてゲーム本編へ
 	e := &Exploration{
 		player:         p,
 		starfield:      newStarfield(1),

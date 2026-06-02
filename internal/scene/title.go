@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/yiozio/space-miner/internal/asset/sound"
 	"github.com/yiozio/space-miner/internal/dialog"
 	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/save"
@@ -46,6 +47,7 @@ func NewTitle() *Title {
 		bg: newTitleBackground(),
 	}
 	tl.applyLabels()
+	sound.PlayTitleBGM() // タイトルの宇宙環境音（ゲーム開始時に StopBGM で停止）
 	return tl
 }
 
@@ -63,6 +65,7 @@ func (t *Title) applyLabels() {
 
 func (t *Title) Update(d Director) error {
 	t.applyLabels()
+	sound.TickTitleBGM()
 	t.bg.update()
 	r := t.menu.Update()
 	if !r.Activated {
