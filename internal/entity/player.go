@@ -123,6 +123,49 @@ func (p *Player) recomputeStats() {
 	// 既に持っている荷物を強制で破棄するのは避け、超過状態は許容する（買取・売却で減らす）。
 }
 
+// DirSpeed は1方向の速度性能（表示用）。Active が false の方向は推進が無い。
+type DirSpeed struct {
+	Active bool
+	Max    float64 // 最高速度
+	Boost  float64 // ブースト時の最高速度
+}
+
+// ShipStats は機体性能の表示用サマリ（エディタ表示など）。
+type ShipStats struct {
+	TotalDPS           float64 // 全銃の DPS 合計（総火力）
+	MaxHP              int     // 耐久値
+	MaxShield          int     // シールド
+	MaxFuel            float64 // 燃料（>0 ならブースト可）
+	Fwd, Bck, Lft, Rgt DirSpeed
+}
+
+// Stats は現在の搭載パーツから機体性能サマリを算出する。
+// DPS は各銃の GunDamage×60/GunCooldown（個別クールダウン前提）の合計。
+func (p *Player) Stats() ShipStats {
+	var dps float64
+	for _, part := range p.Parts {
+		d := part.Def()
+		if d == nil || d.Kind != PartGun || d.GunCooldown <= 0 {
+			continue
+		}
+		dps += float64(d.GunDamage) * 60.0 / float64(d.GunCooldown)
+	}
+	fwd, bck, lft, rgt := p.thrusterStatsByDir()
+	toDir := func(a thrusterAgg) DirSpeed {
+		return DirSpeed{Active: a.count > 0, Max: a.maxSpeed, Boost: a.boostMaxSpeed}
+	}
+	return ShipStats{
+		TotalDPS:  dps,
+		MaxHP:     p.MaxHP,
+		MaxShield: p.MaxShieldHP,
+		MaxFuel:   p.MaxFuel,
+		Fwd:       toDir(fwd),
+		Bck:       toDir(bck),
+		Lft:       toDir(lft),
+		Rgt:       toDir(rgt),
+	}
+}
+
 // CargoLoad は現在の積載重量を返す（資源 + スペアパーツ）。
 // 設置済みパーツは「機体構造」として扱い、積載には含めない。
 func (p *Player) CargoLoad() float64 {

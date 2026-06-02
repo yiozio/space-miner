@@ -88,12 +88,6 @@ func (se *StationEditor) Update(d Director) error {
 		}
 	}
 
-	// 数字 1-9 でパレット先頭9個を直接選択
-	for i := 0; i < 9 && i < len(se.palette); i++ {
-		if inpututil.IsKeyJustPressed(ebiten.Key1 + ebiten.Key(i)) {
-			se.paletteIx = i
-		}
-	}
 	// Q/E でパレット前後送り（バリアント数が多くても全件アクセス可能）
 	if inpututil.IsKeyJustPressed(ebiten.KeyQ) && len(se.palette) > 0 {
 		se.paletteIx = (se.paletteIx - 1 + len(se.palette)) % len(se.palette)
@@ -207,6 +201,7 @@ func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
 	paletteX := gridStartX + gridPx + gap
 	contentY := 100.0
 
+	se.drawStats(dst, theme, 24, contentY) // グリッド左の空きに機体性能
 	se.drawShipGrid(dst, theme, gridStartX, contentY)
 	se.drawPalette(dst, theme, paletteX, contentY)
 	se.drawCursorInfo(dst, theme, gridStartX, contentY+gridPx+24)
@@ -259,13 +254,8 @@ func (se *StationEditor) drawPalette(dst *ebiten.Image, theme *ui.Theme, x, y fl
 		if i == se.paletteIx {
 			prefix = "> "
 		}
-		// 先頭9件は数字キーで直接選択可能
-		idxLabel := "  "
-		if i < 9 {
-			idxLabel = fmt.Sprintf("%d ", i+1)
-		}
 		ui.DrawText(dst,
-			fmt.Sprintf(ed.PaletteRowFmt, prefix, idxLabel, i18n.PartName(def.ID), qty),
+			fmt.Sprintf(ed.PaletteRowFmt, prefix, i18n.PartName(def.ID), qty),
 			x, lineY, 1.3, clr)
 		lineY += 24
 	}
@@ -291,6 +281,58 @@ func (se *StationEditor) drawCursorInfo(dst *ebiten.Image, theme *ui.Theme, x, y
 				i18n.PartName(def.ID), se.player.PartsInventory[def.ID], rotationLabel(se.brushRotation)),
 			x, y+44, 1.3, theme.Line)
 	}
+}
+
+// drawStats はグリッド左に機体性能を表示する。使われていない項目は出さない。
+func (se *StationEditor) drawStats(dst *ebiten.Image, theme *ui.Theme, x, y float64) {
+	ed := i18n.S().Editor
+	st := se.player.Stats()
+	const (
+		scale = 1.3
+		line  = 24.0
+		valX  = 100.0 // 値の左端（ラベルと揃える）
+	)
+	ui.DrawText(dst, ed.StatsHeader, x, y, 1.6, theme.Line)
+	cy := y + 32
+	put := func(label, val string) {
+		ui.DrawText(dst, label, x, cy, scale, theme.Line)
+		ui.DrawText(dst, val, x+valX, cy, scale, theme.Line)
+		cy += line
+	}
+	if st.TotalDPS > 0 {
+		put(ed.StatFirepower, fmt.Sprintf("%.1f", st.TotalDPS))
+	}
+	put(ed.StatHull, fmt.Sprintf("%d", st.MaxHP))
+	if st.MaxShield > 0 {
+		put(ed.StatShield, fmt.Sprintf("%d", st.MaxShield))
+	}
+
+	// 速度（方向別）。ブースト列は燃料がある（ブースト可能な）ときだけ。
+	boostable := st.MaxFuel > 0
+	cy += 8
+	hdr := ed.StatSpeed + " (" + ed.StatMax
+	if boostable {
+		hdr += " / " + ed.StatBoost
+	}
+	hdr += ")"
+	ui.DrawText(dst, hdr, x, cy, scale, theme.LineDim)
+	cy += line
+	dir := func(label string, ds entity.DirSpeed) {
+		if !ds.Active {
+			return
+		}
+		val := fmt.Sprintf("%.1f", ds.Max)
+		if boostable {
+			val += fmt.Sprintf(" / %.1f", ds.Boost)
+		}
+		ui.DrawText(dst, label, x, cy, scale, theme.Line)
+		ui.DrawText(dst, val, x+valX, cy, scale, theme.Line)
+		cy += line
+	}
+	dir(ed.DirForward, st.Fwd)
+	dir(ed.DirBackward, st.Bck)
+	dir(ed.DirRight, st.Rgt)
+	dir(ed.DirLeft, st.Lft)
 }
 
 // rotationLabel は回転値を人間可読な文字列にする。

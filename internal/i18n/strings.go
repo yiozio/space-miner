@@ -253,7 +253,19 @@ type EditorStrings struct {
 	CellEmpty     string
 	BrushLabel    string // "Selected: %s (x%d)   Brush: %s"
 	CursorPosFmt  string // "Cursor (%d, %d)"
-	PaletteRowFmt string // "%s%s%-15s x%d"
+	PaletteRowFmt string // "%s%-15s x%d"
+	// 機体性能パネル（グリッド左に表示）
+	StatsHeader   string // 見出し "性能"
+	StatFirepower string // "総火力"
+	StatHull      string // "耐久値"
+	StatShield    string // "シールド"
+	StatSpeed     string // "速度"
+	StatMax       string // "最高"
+	StatBoost     string // "ブースト"
+	DirForward    string // "前進"
+	DirBackward   string // "後退"
+	DirRight      string // "右方"
+	DirLeft       string // "左方"
 }
 
 // TavernStrings は酒場 (クエスト掲示板)。
