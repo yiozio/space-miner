@@ -7,6 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/yiozio/space-miner/internal/asset/sound"
 	"github.com/yiozio/space-miner/internal/dialog"
 	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
@@ -95,7 +96,7 @@ func (s *DialogScene) Update(d Director) error {
 	advance := inpututil.IsKeyJustPressed(ebiten.KeyEnter) ||
 		inpututil.IsKeyJustPressed(ebiten.KeySpace)
 
-	// テキストが途中なら advance で全文表示にショートカット
+	// テキストが途中なら advance で全文表示にショートカット（音は鳴らさない）
 	if advance && !s.textFullyRevealed() {
 		s.revealAcc = float64(len(n.Text))
 		return nil
@@ -118,6 +119,7 @@ func (s *DialogScene) Update(d Director) error {
 			}
 		}
 		if advance {
+			sound.PlayMenuSelect()
 			c := n.Choices[s.cursor]
 			s.gotoNode(c.Next)
 		}
@@ -126,6 +128,7 @@ func (s *DialogScene) Update(d Director) error {
 
 	// 選択肢なし: advance で Next（空なら終了）
 	if advance {
+		sound.PlayMenuSelect()
 		s.gotoNode(n.Next)
 	}
 	return nil
