@@ -137,6 +137,7 @@ func (ss *StationShop) Update(d Director) error {
 	ss.refreshPlayerSlots()
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		sound.PlayMenuCancel()
 		d.Pop()
 		return nil
 	}

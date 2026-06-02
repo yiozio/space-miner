@@ -3,6 +3,7 @@ package scene
 import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/yiozio/space-miner/internal/asset/sound"
 	"github.com/yiozio/space-miner/internal/i18n"
 	"github.com/yiozio/space-miner/internal/ui"
 )
@@ -55,6 +56,7 @@ func (s *Settings) rebuildMenu(currentTheme *ui.Theme) {
 func (s *Settings) Update(d Director) error {
 	// Esc で即時に戻れるようにする（Back 項目と同等）
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		sound.PlayMenuCancel()
 		d.Pop()
 		return nil
 	}

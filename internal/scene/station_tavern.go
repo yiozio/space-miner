@@ -43,6 +43,7 @@ func NewStationTavern(p *entity.Player, world *entity.World, stationName string)
 
 func (s *StationTavern) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		sound.PlayMenuCancel()
 		d.Pop()
 		return nil
 	}
@@ -75,6 +76,7 @@ func (s *StationTavern) Update(d Director) error {
 		if !q.IsEmpty() && s.player.Credits >= q.DiscardCost {
 			s.player.Credits -= q.DiscardCost
 			s.player.RegenerateSlot(s.stationName, s.cursor, s.world, s.rng)
+			sound.PlayMenuCancel()
 		}
 	}
 	return nil

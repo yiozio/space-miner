@@ -87,6 +87,7 @@ func (s *SaveSlotPicker) firstManualIndex() int {
 
 func (s *SaveSlotPicker) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		sound.PlayMenuCancel()
 		d.Pop()
 		return nil
 	}

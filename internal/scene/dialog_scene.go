@@ -89,6 +89,7 @@ func (s *DialogScene) Update(d Director) error {
 
 	// Esc は会話全体スキップ
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		sound.PlayMenuCancel()
 		d.Pop()
 		return nil
 	}

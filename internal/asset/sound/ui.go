@@ -16,12 +16,14 @@ import (
 var (
 	menuMovePCM   []byte
 	menuSelectPCM []byte
+	menuCancelPCM []byte
 )
 
 // 再生音量（0.0〜1.0）。
 const (
 	menuMoveVol   = 0.1
 	menuSelectVol = 0.1
+	menuCancelVol = 0.1
 )
 
 // メニュー移動音（ピッ）の合成パラメータ。短い正弦波にアタック／リリース。
@@ -33,9 +35,11 @@ const (
 )
 
 // メニュー決定音（ポロン）の合成パラメータ。低めの正弦波＋2倍音を指数減衰。
+// キャンセル音は同じ形でさらに低い基音を使う。
 const (
 	menuSelectDur     = 260 * time.Millisecond
-	menuSelectFreq    = 440.0 // 低め
+	menuSelectFreq    = 440.0 // 決定音の基音
+	menuCancelFreq    = 300.0 // キャンセル音の基音（決定音より低め）
 	menuSelectHarmAmp = 0.3   // 2 倍音の混合量（プラックの厚み）
 	menuSelectDecay   = 90 * time.Millisecond
 	menuSelectAttack  = 3 * time.Millisecond
@@ -45,12 +49,15 @@ const (
 // buildUISounds は全 UI 効果音 PCM を生成する。buildSfx から呼ばれる。
 func buildUISounds() {
 	menuMovePCM = genMenuMovePCM()
-	menuSelectPCM = genMenuSelectPCM()
+	menuSelectPCM = genPluckPCM(menuSelectFreq)
+	menuCancelPCM = genPluckPCM(menuCancelFreq)
 }
 
-// PlayMenuMove はメニュー移動音、PlayMenuSelect はメニュー決定音を再生する。
+// PlayMenuMove は移動音、PlayMenuSelect は決定音、PlayMenuCancel はキャンセル音
+// （決定音より低い）を再生する。
 func PlayMenuMove()   { playOneShot(menuMovePCM, menuMoveVol) }
 func PlayMenuSelect() { playOneShot(menuSelectPCM, menuSelectVol) }
+func PlayMenuCancel() { playOneShot(menuCancelPCM, menuCancelVol) }
 
 // genMenuMovePCM は短い正弦波にアタック／リリースを掛けた「ピッ」を作る。
 func genMenuMovePCM() []byte {
@@ -74,11 +81,12 @@ func genMenuMovePCM() []byte {
 	return monoToStereoPCM(mono)
 }
 
-// genMenuSelectPCM は低めの正弦波＋2倍音を指数減衰させた柔らかい「ポロン」を作る。
-func genMenuSelectPCM() []byte {
+// genPluckPCM は基音 freq の正弦波＋2倍音を指数減衰させた柔らかい「ポロン」を作る。
+// 決定音・キャンセル音で基音だけ変えて共用する。
+func genPluckPCM(freq float64) []byte {
 	n := frameCount(menuSelectDur)
 	mono := make([]float32, n)
-	step := 2 * math.Pi * menuSelectFreq / sampleRate
+	step := 2 * math.Pi * freq / sampleRate
 	tau := float64(menuSelectDecay) / float64(time.Second)
 	atk := frameCount(menuSelectAttack)
 	rel := frameCount(menuSelectRelease)

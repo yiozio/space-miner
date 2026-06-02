@@ -57,6 +57,7 @@ func (s *StarMap) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) ||
 		inpututil.IsKeyJustPressed(ebiten.KeyN) ||
 		inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+		sound.PlayMenuCancel()
 		d.Pop()
 		return nil
 	}

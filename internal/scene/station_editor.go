@@ -60,6 +60,7 @@ func (se *StationEditor) selectedDef() *entity.PartDef {
 
 func (se *StationEditor) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		sound.PlayMenuCancel()
 		d.Pop()
 		return nil
 	}
