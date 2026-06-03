@@ -951,7 +951,15 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 	my := float32(sh) - miniH - 20
 	// 不透明の黒背景で星空・小惑星を覆う
 	vector.DrawFilledRect(dst, mx, my, miniW, miniH, color.NRGBA{0, 0, 0, 255}, false)
-	vector.StrokeRect(dst, mx, my, miniW, miniH, 1, theme.Line, false)
+	// 敵（生存中の海賊）がいる間は縁を太く赤くして警戒を示す
+	borderW, borderColor := float32(1), theme.Line
+	for _, pr := range e.pirates {
+		if pr.HP > 0 {
+			borderW, borderColor = 3, color.NRGBA{0xff, 0x60, 0x40, 0xff}
+			break
+		}
+	}
+	vector.StrokeRect(dst, mx, my, miniW, miniH, borderW, borderColor, false)
 	// プレイヤー（中央点）
 	vector.DrawFilledRect(dst, mx+miniW/2-1, my+miniH/2-1, 2, 2, theme.Line, false)
 	// 小惑星（1 個 = 1 素材で構成されているので、先頭グリッドの素材色で描画）
@@ -969,16 +977,16 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		c := a.Grids[0].Resource.Info().Color
 		vector.DrawFilledRect(dst, nx-1, ny-1, 2, 2, c, false)
 	}
-	// 海賊（赤い小点）
+	// 海賊（範囲内は赤い小点 / 範囲外は縁の内側に方向マーカー「<」）
+	mcx, mcy := mx+miniW/2, my+miniH/2
 	for _, pr := range e.pirates {
-		dx := (pr.X - e.cameraX) * minimapScale
-		dy := (pr.Y - e.cameraY) * minimapScale
-		nx := mx + miniW/2 + float32(dx)
-		ny := my + miniH/2 + float32(dy)
-		if nx < mx || nx > mx+miniW || ny < my || ny > my+miniH {
+		nx := mcx + float32((pr.X-e.cameraX)*minimapScale)
+		ny := mcy + float32((pr.Y-e.cameraY)*minimapScale)
+		if nx >= mx && nx <= mx+miniW && ny >= my && ny <= my+miniH {
+			vector.DrawFilledRect(dst, nx-1, ny-1, 3, 3, color.NRGBA{0xff, 0x60, 0x40, 0xff}, false)
 			continue
 		}
-		vector.DrawFilledRect(dst, nx-1, ny-1, 3, 3, color.NRGBA{0xff, 0x60, 0x40, 0xff}, false)
+		drawMinimapEnemyMarker(dst, mcx, mcy, mx, my, miniW, miniH, nx, ny)
 	}
 
 	// ステーション（小さな四角で目立たせる）
@@ -1190,6 +1198,26 @@ func drawShipTrail(dst *ebiten.Image, trail []entity.TrailPoint, offX, offY floa
 			float32(b.X+offX), float32(b.Y+offY),
 			shipTrailWidth, cc, true)
 	}
+}
+
+// drawMinimapEnemyMarker はミニマップ外の敵を、縁の内側に「<」状のシェブロン
+// （敵方向を指す矢じり）で方向表示する。(tx, ty) は敵のミニマップ投影位置（範囲外）。
+func drawMinimapEnemyMarker(dst *ebiten.Image, mcx, mcy, mx, my, w, h, tx, ty float32) {
+	dirX, dirY := tx-mcx, ty-mcy
+	d := float32(math.Hypot(float64(dirX), float64(dirY)))
+	if d == 0 {
+		return
+	}
+	ux, uy := dirX/d, dirY/d // 中心→敵 の単位ベクトル
+	const inset, size = 8.0, 5.0
+	// マーカー位置は縁の内側にクランプ
+	px := max(mx+inset, min(tx, mx+w-inset))
+	py := max(my+inset, min(ty, my+h-inset))
+	// 敵方向を指す矢じり（先端＋左右の翼）
+	perpX, perpY := -uy, ux
+	tipX, tipY := px+ux*size, py+uy*size
+	vector.StrokeLine(dst, tipX, tipY, tipX-ux*size+perpX*size, tipY-uy*size+perpY*size, 1.5, pirateTrailColor, true)
+	vector.StrokeLine(dst, tipX, tipY, tipX-ux*size-perpX*size, tipY-uy*size-perpY*size, 1.5, pirateTrailColor, true)
 }
 
 // drawTrailLight は軌跡の発生点（機体中心）に、幅 4〜6px で明滅する光点を描く。
