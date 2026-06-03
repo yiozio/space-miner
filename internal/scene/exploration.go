@@ -232,6 +232,7 @@ func (e *Exploration) trySpawnPirate() {
 	if len(e.pirates) >= cap {
 		return
 	}
+	first := len(e.pirates) == 0 // 0 体→出現の瞬間だけ警告音を鳴らす
 	for tries := 0; tries < 8; tries++ {
 		ang := e.pirateSpawnRng.Float64() * math.Pi * 2
 		dist := asteroidSpawnRingMin + e.pirateSpawnRng.Float64()*(asteroidSpawnRingMax-asteroidSpawnRingMin)
@@ -249,6 +250,9 @@ func (e *Exploration) trySpawnPirate() {
 			continue
 		}
 		e.pirates = append(e.pirates, entity.NewPirate(x, y, e.player.X, e.player.Y, def))
+		if first {
+			sound.PlayWarning()
+		}
 		return
 	}
 }
