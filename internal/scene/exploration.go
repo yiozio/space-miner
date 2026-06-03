@@ -316,6 +316,7 @@ func (e *Exploration) Update(d Director) error {
 		e.player.ThrustState = entity.ThrustOff
 		e.rotationSound.Stop()
 		e.burnerSound.Stop()
+		sound.StopBGM()
 		d.Push(NewGameOver())
 		return nil
 	}
@@ -334,6 +335,7 @@ func (e *Exploration) Update(d Director) error {
 		e.player.ThrustState = entity.ThrustOff
 		e.rotationSound.Stop()
 		e.burnerSound.Stop()
+		sound.StopBGM()
 		d.Push(NewMenu(save.Context{
 			Player:   e.player,
 			Playtime: e.playtime,
@@ -347,6 +349,7 @@ func (e *Exploration) Update(d Director) error {
 		e.player.ThrustState = entity.ThrustOff
 		e.rotationSound.Stop()
 		e.burnerSound.Stop()
+		sound.StopBGM()
 		d.Push(NewWorldMapView(e.lastMap, e.stations, e.player.X, e.player.Y, e.player.Angle))
 		return nil
 	}
@@ -356,6 +359,7 @@ func (e *Exploration) Update(d Director) error {
 		e.player.ThrustState = entity.ThrustOff
 		e.rotationSound.Stop()
 		e.burnerSound.Stop()
+		sound.StopBGM()
 		canWarp := e.player.HasWarpDrive()
 		current := e.CurrentMapName()
 		d.Push(NewStarMap(e.world, current, canWarp, func(d Director, dest *entity.FullMap) bool {
@@ -369,6 +373,7 @@ func (e *Exploration) Update(d Director) error {
 	e.player.PushTrail()
 	e.rotationSound.Update(isRotationKeyPressed())
 	e.burnerSound.Update(e.player.ThrustState != entity.ThrustOff, e.player.ThrustState == entity.ThrustBoost)
+	sound.PlayGameBGM()      // 探索中はゲーム BGM をループ（メニュー/ステーションでは StopBGM）
 	e.playtime += 1.0 / 60.0 // ebitengine 既定 TPS（60）想定の累計プレイ時間
 
 	// 現在いる FullMap を更新（区画外なら直前の値を保持）
@@ -417,6 +422,7 @@ func (e *Exploration) Update(d Director) error {
 		e.player.ThrustState = entity.ThrustOff
 		e.rotationSound.Stop()
 		e.burnerSound.Stop()
+		sound.StopBGM()
 		stationName := e.activeDock.Name
 		// 初回入船時は専用スクリプトを上に重ねる（閉じるとステーションメニューに戻る）
 		firstVisit := !e.player.VisitedStations[stationName]

@@ -8,35 +8,55 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/mp3"
+	"github.com/hajimehoshi/ebiten/v2/audio/wav"
 )
 
-// ambience.go はタイトル画面の BGM（cosmic_noise_sound.mp3）を、
-// 再生終了後に少し間を置いて繰り返し流す（ストリーミング再生）。
+// ambience.go は BGM（タイトル／ゲーム中）を管理する。BGM チャンネルは1つで、
+// タイトル BGM とゲーム BGM のどちらか一方だけが鳴る。
+//
+//   - タイトル BGM: cosmic_noise_sound.mp3 を再生終了後 2 秒待って繰り返す
+//     （ストリーミング再生＋毎フレームの TickTitleBGM）。
+//   - ゲーム BGM  : space_noise.wav を継ぎ目なくループ（ストリーミング再生）。
+//     メニュー／ステーション等のサブ画面表示中は StopBGM で止める。
 
 //go:embed cosmic_noise_sound.mp3
 var cosmicNoiseMP3 []byte
 
+//go:embed space_noise.wav
+var spaceNoiseWAV []byte
+
 const (
 	titleBGMVol       = 0.5
-	titleBGMGapFrames = 120 // 再生終了後の待ち時間（2 秒 @60fps）
+	titleBGMGapFrames = 120 // タイトル BGM の再生終了後の待ち（2 秒 @60fps）
+	gameBGMVol        = 0.4
+)
+
+type bgmKind int
+
+const (
+	bgmNone bgmKind = iota
+	bgmTitle
+	bgmGame
 )
 
 var (
 	bgmPlayer *audio.Player
-	bgmActive bool // タイトル BGM を回し続けるか
-	bgmGap    int  // 次の再生までの残フレーム（プレイヤー無しのとき有効）
+	bgmCur    bgmKind
+	bgmActive bool // タイトル BGM の繰り返し制御（tick 用）
+	bgmGap    int  // タイトル BGM の次の再生までの残フレーム
 )
 
 // PlayTitleBGM はタイトル BGM の繰り返し再生を開始する。
 // TickTitleBGM を毎フレーム呼ぶことで「終了 → 2 秒待機 → 再生」を繰り返す。
 func PlayTitleBGM() {
 	StopBGM()
+	bgmCur = bgmTitle
 	bgmActive = true
 	bgmGap = 0
-	startBGMClip()
+	startTitleClip()
 }
 
-// TickTitleBGM は毎フレーム呼び、再生終了を検知して 2 秒後に再生し直す。
+// TickTitleBGM は毎フレーム呼び、タイトル BGM の終了を検知して 2 秒後に再生し直す。
 func TickTitleBGM() {
 	if !bgmActive {
 		return
@@ -45,24 +65,48 @@ func TickTitleBGM() {
 		if bgmPlayer.IsPlaying() {
 			return
 		}
-		// 再生終了 → 解放して待機開始
 		_ = bgmPlayer.Close()
 		bgmPlayer = nil
 		bgmGap = titleBGMGapFrames
 		return
 	}
-	// プレイヤー無し = 待機中
 	if bgmGap > 0 {
 		bgmGap--
 		return
 	}
-	startBGMClip()
+	startTitleClip()
 }
 
-// StopBGM はタイトル BGM を停止する。ゲーム開始時などに呼ぶ。
+// PlayGameBGM はゲーム中の BGM（space_noise.wav）を継ぎ目なくループ再生する。
+// 既にゲーム BGM が鳴っていれば何もしない（毎フレーム呼んでよい）。
+func PlayGameBGM() {
+	if bgmCur == bgmGame && bgmPlayer != nil && bgmPlayer.IsPlaying() {
+		return
+	}
+	StopBGM()
+	ctx := Context()
+	s, err := wav.DecodeF32(bytes.NewReader(spaceNoiseWAV))
+	if err != nil {
+		log.Printf("sound: decode game bgm: %v", err)
+		return
+	}
+	loop := audio.NewInfiniteLoopF32(s, s.Length())
+	p, err := ctx.NewPlayerF32(loop)
+	if err != nil {
+		log.Printf("sound: game bgm player: %v", err)
+		return
+	}
+	p.SetVolume(gameBGMVol)
+	p.Play()
+	bgmPlayer = p
+	bgmCur = bgmGame
+}
+
+// StopBGM は再生中の BGM を停止・解放する。
 func StopBGM() {
 	bgmActive = false
 	bgmGap = 0
+	bgmCur = bgmNone
 	if bgmPlayer != nil {
 		bgmPlayer.Pause()
 		_ = bgmPlayer.Close()
@@ -70,8 +114,8 @@ func StopBGM() {
 	}
 }
 
-// startBGMClip は MP3 を 1 回ストリーミング再生する（全展開しないので省メモリ）。
-func startBGMClip() {
+// startTitleClip はタイトル BGM の mp3 を 1 回ストリーミング再生する。
+func startTitleClip() {
 	ctx := Context()
 	s, err := mp3.DecodeF32(bytes.NewReader(cosmicNoiseMP3))
 	if err != nil {
