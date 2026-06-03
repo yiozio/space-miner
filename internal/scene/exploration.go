@@ -82,11 +82,18 @@ type Exploration struct {
 	rotationSound *sound.RotationSound
 	// バーナー音制御。推進中はイントロ→ループ再生、停止で再生終了。
 	burnerSound *sound.BurnerSound
+
+	// たまに鳴らす「ポポポ」ビープの残フレームと専用乱数（演出用、ゲーム性に無影響）。
+	beepTimer int
+	beepRng   *rand.Rand
 }
 
 const (
 	// ワープアニメ全体のフレーム数（60fps で 1.5 秒）。
 	warpDuration = 90
+	// たまに鳴らすビープの出現間隔（フレーム）。60fps で約 10〜25 秒。
+	beepIntervalMinFrames = 600
+	beepIntervalMaxFrames = 1500
 )
 
 // CurrentMapName は現在いる FullMap 名を返す（区画外なら空文字）。
@@ -129,7 +136,9 @@ func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 		playtime:       playtime,
 		rotationSound:  sound.NewRotationSound(),
 		burnerSound:    sound.NewBurnerSound(),
+		beepRng:        rand.New(rand.NewSource(4)),
 	}
+	e.beepTimer = beepIntervalMinFrames + e.beepRng.Intn(beepIntervalMaxFrames-beepIntervalMinFrames)
 	// 各 FullMap の中心にステーションを配置（恒星マップ／ワープ先選択でも参照される）
 	for i := range e.world.Maps {
 		m := &e.world.Maps[i]
@@ -373,7 +382,14 @@ func (e *Exploration) Update(d Director) error {
 	e.player.PushTrail()
 	e.rotationSound.Update(isRotationKeyPressed())
 	e.burnerSound.Update(e.player.ThrustState != entity.ThrustOff, e.player.ThrustState == entity.ThrustBoost)
-	sound.PlayGameBGM()      // 探索中はゲーム BGM をループ（メニュー/ステーションでは StopBGM）
+	sound.PlayGameBGM() // 探索中はゲーム BGM をループ（メニュー/ステーションでは StopBGM）
+	// たまに「ポポポ」ビープ（残響付き）を鳴らす。探索アクティブ時のみ進む。
+	if e.beepTimer <= 0 {
+		sound.PlayBeeps()
+		e.beepTimer = beepIntervalMinFrames + e.beepRng.Intn(beepIntervalMaxFrames-beepIntervalMinFrames)
+	} else {
+		e.beepTimer--
+	}
 	e.playtime += 1.0 / 60.0 // ebitengine 既定 TPS（60）想定の累計プレイ時間
 
 	// 現在いる FullMap を更新（区画外なら直前の値を保持）
