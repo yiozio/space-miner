@@ -136,7 +136,9 @@ func (w *World) PirateSpawnCap(px, py float64) int {
 		}
 		cap += float64(z.MaxPirates) * (1 - d/z.Radius)
 	}
-	return int(cap)
+	// 切り上げ: ゾーン内であれば中心から離れていても複数同時出現を許す
+	//（1体と戦っている最中に次が出てくるように）。
+	return int(math.Ceil(cap))
 }
 
 // PickPiratePattern は (x, y) で重なる PirateZone の Patterns から

@@ -94,6 +94,9 @@ const (
 	// たまに鳴らすビープの出現間隔（フレーム）。60fps で約 10〜25 秒。
 	beepIntervalMinFrames = 600
 	beepIntervalMaxFrames = 1500
+	// 海賊の1フレームあたり出現確率。上限未満でもこの確率でしか湧かないため、
+	// 倒した直後に矢継ぎ早に出ず、平均 ~1.7 秒間隔（@60fps）で増えていく。
+	pirateSpawnChancePerFrame = 0.01
 )
 
 // CurrentMapName は現在いる FullMap 名を返す（区画外なら空文字）。
@@ -230,6 +233,10 @@ func (e *Exploration) applyAutoAim() {
 func (e *Exploration) trySpawnPirate() {
 	cap := e.world.PirateSpawnCap(e.player.X, e.player.Y)
 	if len(e.pirates) >= cap {
+		return
+	}
+	// 上限未満でも確率で間引く（倒した直後に矢継ぎ早に湧かないように）。
+	if e.pirateSpawnRng.Float64() >= pirateSpawnChancePerFrame {
 		return
 	}
 	first := len(e.pirates) == 0 // 0 体→出現の瞬間だけ警告音を鳴らす
