@@ -38,7 +38,7 @@ const (
 const burnerLoopBlend = 100 * time.Millisecond
 
 // burnerVolume はバーナー音の通常音量（0.0〜1.0）。
-const burnerVolume = 0.01
+const burnerVolume = 0.03
 
 // burnerBoostMul はシフト（ブースト）中の音量倍率。
 const burnerBoostMul = 1.5
