@@ -12,7 +12,7 @@ import (
 
 const (
 	StationBodyRadius = 80
-	StationDockRange  = 60 // ドック中心からこの距離以内なら接岸可能
+	StationDockRange  = 130 // ドック中心からこの距離以内なら接岸可能
 	stationDockOffset = StationBodyRadius + 50
 )
 
