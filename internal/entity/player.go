@@ -9,6 +9,7 @@ import (
 const (
 	playerRotateSpeed    = 0.06
 	playerOverspeedDecel = 0.10 // 通常最高速度を超えた分を毎フレームこれだけ削る（スラスタ数倍でスケール）
+	speedCapDecel        = 0.20 // 速度マグニチュード上限を下げるときの毎フレーム減衰量
 	PlayerHPDefault      = 100  // 基本 HP（Armor の ArmorHP 合算で MaxHP が増える）
 	// PlayerCreditsDefault = 100  // 初期所持クレジット
 	PlayerCreditsDefault = 1000
@@ -44,6 +45,9 @@ type Player struct {
 	bckCap float64
 	lftCap float64
 	rgtCap float64
+	// 速度マグニチュードの上限。上げるときは即時、下げるときは徐々に追従させ、
+	// 高速移動中に低速方向（後退など）へ切り替えても一気に減速しないようにする。
+	spdCap float64
 	// シールド回復制御。
 	noDamageFrames int     // 最後の被弾からの経過フレーム
 	shieldRegenAcc float64 // 1 を超えるごとに ShieldHP を 1 上げる
@@ -355,14 +359,13 @@ func (p *Player) Update() {
 	updateCap(&p.lftCap, lft, lftBoosting)
 	updateCap(&p.rgtCap, rgt, rgtBoosting)
 
-	// 速度マグニチュードのキャップ。現在稼働中の方向の cap の最大値を採用する。
-	// 何も稼働していなければ全方向 cap の最大値を採用し、慣性を保ったまま
-	// 直前のキャップに合わせて緩やかに減衰させる。
-	spdCap := 0.0
+	// 速度マグニチュードの上限。まず現フレームの目標上限を求める：稼働中の方向の
+	// cap の最大値（何も稼働していなければ全方向 cap の最大値で慣性を保つ）。
+	target := 0.0
 	hasActive := false
 	considerCap := func(c float64) {
-		if c > spdCap {
-			spdCap = c
+		if c > target {
+			target = c
 		}
 		hasActive = true
 	}
@@ -379,12 +382,19 @@ func (p *Player) Update() {
 		considerCap(p.rgtCap)
 	}
 	if !hasActive {
-		spdCap = math.Max(math.Max(p.fwdCap, p.bckCap), math.Max(p.lftCap, p.rgtCap))
+		target = math.Max(math.Max(p.fwdCap, p.bckCap), math.Max(p.lftCap, p.rgtCap))
 	}
-	if spdCap > 0 {
+	// 上限は上げるときは即時、下げるときは徐々に。これで高速前進中に後退へ
+	// 切り替えても、上限が一気に下がらず緩やかに減速する。
+	if target >= p.spdCap {
+		p.spdCap = target
+	} else {
+		p.spdCap = math.Max(target, p.spdCap-speedCapDecel)
+	}
+	if p.spdCap > 0 {
 		speed := math.Hypot(p.VX, p.VY)
-		if speed > spdCap {
-			scale := spdCap / speed
+		if speed > p.spdCap {
+			scale := p.spdCap / speed
 			p.VX *= scale
 			p.VY *= scale
 		}
