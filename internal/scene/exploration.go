@@ -997,19 +997,22 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 			vector.DrawFilledRect(dst, nx-1, ny-1, 3, 3, color.NRGBA{0xff, 0x60, 0x40, 0xff}, false)
 			continue
 		}
-		drawMinimapEnemyMarker(dst, mcx, mcy, mx, my, miniW, miniH, nx, ny)
+		drawMinimapMarker(dst, mcx, mcy, mx, my, miniW, miniH, nx, ny, color.NRGBA{0xff, 0x60, 0x40, 0xff})
 	}
 
-	// ステーション（小さな四角で目立たせる）
+	// ステーション（範囲内は小さな四角 / 範囲外は縁の内側に方向マーカー「<」）。
+	// 表示は現在いるワールドマップ（FullMap）内のステーションに限定する。
 	for _, s := range e.stations {
-		dx := (s.X - e.cameraX) * minimapScale
-		dy := (s.Y - e.cameraY) * minimapScale
-		nx := mx + miniW/2 + float32(dx)
-		ny := my + miniH/2 + float32(dy)
-		if nx < mx || nx > mx+miniW || ny < my || ny > my+miniH {
+		if e.lastMap == nil || !e.lastMap.Contains(s.X, s.Y) {
 			continue
 		}
-		vector.StrokeRect(dst, nx-3, ny-3, 6, 6, 1, theme.Line, false)
+		nx := mcx + float32((s.X-e.cameraX)*minimapScale)
+		ny := mcy + float32((s.Y-e.cameraY)*minimapScale)
+		if nx >= mx && nx <= mx+miniW && ny >= my && ny <= my+miniH {
+			vector.StrokeRect(dst, nx-3, ny-3, 6, 6, 1, theme.Line, false)
+			continue
+		}
+		drawMinimapMarker(dst, mcx, mcy, mx, my, miniW, miniH, nx, ny, theme.Line)
 	}
 
 	ui.DrawText(dst, e.buildControlsHelp(), 20, float64(sh)-30, 1.5, theme.LineDim)
@@ -1213,22 +1216,22 @@ func drawShipTrail(dst *ebiten.Image, trail []entity.TrailPoint, offX, offY floa
 
 // drawMinimapEnemyMarker はミニマップ外の敵を、縁の内側に「<」状のシェブロン
 // （敵方向を指す矢じり）で方向表示する。(tx, ty) は敵のミニマップ投影位置（範囲外）。
-func drawMinimapEnemyMarker(dst *ebiten.Image, mcx, mcy, mx, my, w, h, tx, ty float32) {
+func drawMinimapMarker(dst *ebiten.Image, mcx, mcy, mx, my, w, h, tx, ty float32, c color.NRGBA) {
 	dirX, dirY := tx-mcx, ty-mcy
 	d := float32(math.Hypot(float64(dirX), float64(dirY)))
 	if d == 0 {
 		return
 	}
-	ux, uy := dirX/d, dirY/d // 中心→敵 の単位ベクトル
+	ux, uy := dirX/d, dirY/d // 中心→対象 の単位ベクトル
 	const inset, size = 8.0, 5.0
 	// マーカー位置は縁の内側にクランプ
 	px := max(mx+inset, min(tx, mx+w-inset))
 	py := max(my+inset, min(ty, my+h-inset))
-	// 敵方向を指す矢じり（先端＋左右の翼）
+	// 対象方向を指す矢じり（先端＋左右の翼）
 	perpX, perpY := -uy, ux
 	tipX, tipY := px+ux*size, py+uy*size
-	vector.StrokeLine(dst, tipX, tipY, tipX-ux*size+perpX*size, tipY-uy*size+perpY*size, 1.5, pirateTrailColor, true)
-	vector.StrokeLine(dst, tipX, tipY, tipX-ux*size-perpX*size, tipY-uy*size-perpY*size, 1.5, pirateTrailColor, true)
+	vector.StrokeLine(dst, tipX, tipY, tipX-ux*size+perpX*size, tipY-uy*size+perpY*size, 1.5, c, true)
+	vector.StrokeLine(dst, tipX, tipY, tipX-ux*size-perpX*size, tipY-uy*size-perpY*size, 1.5, c, true)
 }
 
 // drawTrailLight は軌跡の発生点（機体中心）に、幅 4〜6px で明滅する光点を描く。
