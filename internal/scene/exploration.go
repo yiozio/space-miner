@@ -147,8 +147,12 @@ func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 		m := &e.world.Maps[i]
 		e.stations = append(e.stations, entity.NewStation(m.Name, m.CX, m.CY))
 	}
-	// 開始時点でいる FullMap を記録（区画外なら nil）
+	// 開始時点でいる FullMap を記録。区画外なら最寄マップを採用し、
+	// lastMap が nil にならないようにする（区画外でも最後／最寄のマップを表示できる）。
 	e.lastMap = e.world.Containing(e.player.X, e.player.Y)
+	if e.lastMap == nil {
+		e.lastMap = e.world.NearestMap(e.player.X, e.player.Y)
+	}
 	return e
 }
 

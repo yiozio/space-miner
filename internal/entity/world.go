@@ -95,6 +95,20 @@ func (w *World) Containing(x, y float64) *FullMap {
 	return nil
 }
 
+// NearestMap は (x, y) に中心が最も近い FullMap を返す（Maps が空なら nil）。
+// 区画外でも「最後／最寄のワールドマップ」を表示の基準にするために使う。
+func (w *World) NearestMap(x, y float64) *FullMap {
+	var best *FullMap
+	bestD := math.Inf(1)
+	for i := range w.Maps {
+		m := &w.Maps[i]
+		if d := math.Hypot(x-m.CX, y-m.CY); d < bestD {
+			bestD, best = d, m
+		}
+	}
+	return best
+}
+
 // InBounds は (x, y) がいずれかの FullMap 内にあるか返す。
 // 区画外では小惑星は生成されない。
 func (w *World) InBounds(x, y float64) bool {
