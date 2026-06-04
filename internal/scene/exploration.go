@@ -1240,7 +1240,13 @@ func drawMinimapMarker(dst *ebiten.Image, mcx, mcy, mx, my, w, h, tx, ty float32
 
 // drawTrailLight は軌跡の発生点（機体中心）に、幅 4〜6px で明滅する光点を描く。
 func drawTrailLight(dst *ebiten.Image, sx, sy float64, c color.NRGBA) {
-	w := 4 + rand.Float64()*2 // 幅 4〜6px に毎フレーム明滅（またたき）
+	drawTrailLightSized(dst, sx, sy, 5, 1, c) // 基準幅 5px ±1（=4〜6px）
+}
+
+// drawTrailLightSized は幅を指定して明滅する光点を描く。
+// base は基準の直径、flicker は毎フレームの揺れ幅（直径 base±flicker でまたたく）。
+func drawTrailLightSized(dst *ebiten.Image, sx, sy, base, flicker float64, c color.NRGBA) {
+	w := base + (rand.Float64()*2-1)*flicker
 	lit := scaleColor(c, 1.3)
 	lit.A = 255
 	vector.DrawFilledCircle(dst, float32(sx), float32(sy), float32(w/2), lit, true)

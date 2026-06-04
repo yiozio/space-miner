@@ -2,8 +2,11 @@ package scene
 
 import (
 	"log"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/yiozio/space-miner/internal/asset/logo"
 	"github.com/yiozio/space-miner/internal/asset/sound"
 	"github.com/yiozio/space-miner/internal/dialog"
 	"github.com/yiozio/space-miner/internal/i18n"
@@ -107,16 +110,46 @@ func (t *Title) Draw(dst *ebiten.Image, d Director) {
 
 	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
 	s := i18n.S().Title
-	titleScale := 6.0
-	tw, th := ui.MeasureText(s.Header, titleScale)
-	titleY := float64(sh) * 0.18
-	ui.DrawText(dst, s.Header, (float64(sw)-tw)/2, titleY, titleScale, theme.Line)
+
+	// タイトルロゴ（SVG をベクター描画）。横幅は画面の 6 割を上限に収める。
+	lw, lh := logo.Size()
+	logoW := math.Min(float64(sw)*0.6, 720)
+	logoScale := logoW / lw
+	logoH := lh * logoScale
+	logoX := (float64(sw)-logoW)/2 - 12
+	logoY := float64(sh) * 0.14
+	logo.Draw(dst, logoX, logoY, logoScale, theme.Line)
+
+	// ロゴ上に自機を表すコックピット三角形と、その重心で明滅する光点を描く。
+	drawTitleShipEmblem(dst, float64(sw)/2-12, logoY+90, theme)
 
 	menuScale := 2.0
 	maxW := t.menu.MaxLabelWidth(menuScale)
 	mx := (float64(sw) - maxW) / 2
-	my := titleY + th + 80
+	my := logoY + logoH + 80
 	t.menu.Draw(dst, theme, mx, my, menuScale)
 
 	ui.DrawText(dst, s.Hint, 20, float64(sh)-30, 1.5, theme.LineDim)
+}
+
+// drawTitleShipEmblem は (cx, bottomY) を底辺中央として、自機コックピット三角形
+// （頂点が上・底辺が下）を描き、その重心に明滅する光点を重ねる。
+// ゲーム内のコックピットパーツ（part.go の PartCockpit）と同じ比率で描く。
+func drawTitleShipEmblem(dst *ebiten.Image, cx, bottomY float64, theme *ui.Theme) {
+	const g = 112.0 // 三角形の外接セルサイズ
+	const inset = g * 0.12
+	// 光点の大きさ（調整用）。lightSize=基準の直径、lightFlicker=明滅の揺れ幅。
+	const lightSize = 15.0
+	const lightFlicker = 2.0
+	x := cx - g/2    // セル左上
+	y := bottomY - g // セル上端（底辺が bottomY に来るよう逆算）
+	apexX, apexY := cx, y+inset
+	lX, lY := x+inset, y+g-inset
+	rX, rY := x+g-inset, y+g-inset
+	vector.StrokeLine(dst, float32(apexX), float32(apexY), float32(lX), float32(lY), 2, theme.Line, true)
+	vector.StrokeLine(dst, float32(apexX), float32(apexY), float32(rX), float32(rY), 2, theme.Line, true)
+	vector.StrokeLine(dst, float32(lX), float32(lY), float32(rX), float32(rY), 2, theme.Line, true)
+	// 重心（頂点 y 比 0.12, 0.88, 0.88 の平均）で明滅する光点。
+	cyCentroid := y + g*(0.12+0.88+0.88)/3.0
+	drawTrailLightSized(dst, cx, cyCentroid, lightSize, lightFlicker, theme.Line)
 }
