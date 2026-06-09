@@ -3,6 +3,7 @@ package scene
 import (
 	"fmt"
 	"image/color"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -248,16 +249,22 @@ func (ss *StationShop) Draw(dst *ebiten.Image, d Director) {
 	ui.DrawText(dst, header, (float64(sw)-hw)/2, 24, headerScale, theme.Line)
 
 	gap := 24.0
-	summaryW := 200.0
 	infoW := 280.0
-	totalW := float64(shopSideWidth)*2 + summaryW + infoW + gap*3
+	// 上段は「店在庫 | 商品情報 | 所持品」の3カラム構成（中央寄せ）
+	totalW := float64(shopSideWidth)*2 + infoW + gap*2
 	startX := (float64(sw) - totalW) / 2
-	sideY := 24 + hh + 40
 
 	shopX := startX
-	summaryX := shopX + float64(shopSideWidth) + gap
-	playerX := summaryX + summaryW + gap
-	infoX := playerX + float64(shopSideWidth) + gap
+	infoX := shopX + float64(shopSideWidth) + gap
+	playerX := infoX + infoW + gap
+
+	// ヘッダー直下に店主画像（プレースホルダ枠）を横幅いっぱいに大きく表示する
+	portraitY := 24 + hh + 8
+	portraitH := 200.0
+	ss.drawShopkeeper(dst, theme, startX, portraitY, totalW, portraitH)
+
+	// 画像の下にグリッドと商品情報を配置する
+	sideY := portraitY + portraitH + 36
 
 	sh2 := i18n.S().Shop
 	ui.DrawText(dst, sh2.Header, shopX, sideY-22, 1.6, theme.LineDim)
@@ -265,8 +272,12 @@ func (ss *StationShop) Draw(dst *ebiten.Image, d Director) {
 
 	ss.drawGrid(dst, theme, shopX, sideY, ss.shopSlots[:], ss.side == 0)
 	ss.drawGrid(dst, theme, playerX, sideY, ss.playerSlots[:], ss.side == 1)
-	ss.drawSummary(dst, theme, summaryX, sideY)
 	ss.drawInfo(dst, theme, infoX, sideY, infoW)
+
+	// 収支は中央カラム（グリッドの間）にグリッド下端合わせで配置する
+	summaryH := 100.0
+	summaryY := sideY + float64(shopSideHeight) - summaryH
+	ss.drawSummary(dst, theme, infoX+infoW/2, summaryY)
 
 	ui.DrawText(dst, sh2.Hint, 20, float64(sh)-30, 1.4, theme.LineDim)
 }
@@ -309,32 +320,50 @@ func (ss *StationShop) drawSlotIcon(dst *ebiten.Image, theme *ui.Theme, cx, cy, 
 	entity.DrawPart(dst, s.Item.PartKind, ix, iy, iconCell, theme, 0)
 }
 
-func (ss *StationShop) drawSummary(dst *ebiten.Image, theme *ui.Theme, x, y float64) {
+// drawSummary は cx を中心に、収支情報を中央寄せで描画する。
+func (ss *StationShop) drawSummary(dst *ebiten.Image, theme *ui.Theme, cx, y float64) {
 	sh := i18n.S().Shop
-	ui.DrawText(dst, sh.Session, x, y, 1.6, theme.Line)
-	lineY := y + 32
-	ui.DrawText(dst, fmt.Sprintf(sh.BuyCountFmt, ss.sessionBuyCount), x, lineY, 1.4, theme.LineDim)
-	lineY += 24
-	ui.DrawText(dst, fmt.Sprintf(sh.SellCountFmt, ss.sessionSellCount), x, lineY, 1.4, theme.LineDim)
-	lineY += 36
+	drawCentered := func(s string, cy, scale float64, c color.Color) {
+		w, _ := ui.MeasureText(s, scale)
+		ui.DrawText(dst, s, cx-w/2, cy, scale, c)
+	}
+	// 購入数・売却数を横並びにする
+	buy := fmt.Sprintf(sh.BuyCountFmt, ss.sessionBuyCount)
+	sell := fmt.Sprintf(sh.SellCountFmt, ss.sessionSellCount)
+	bw, _ := ui.MeasureText(buy, 1.4)
+	sw, _ := ui.MeasureText(sell, 1.4)
+	colGap := 32.0
+	bx := cx - (bw+colGap+sw)/2
+	ui.DrawText(dst, buy, bx, y, 1.4, theme.LineDim)
+	ui.DrawText(dst, sell, bx+bw+colGap, y, 1.4, theme.LineDim)
+	lineY := y + 38
 	sign := "+"
 	if ss.sessionNet < 0 {
 		sign = ""
 	}
-	ui.DrawText(dst, fmt.Sprintf(sh.NetFmt, sign, ss.sessionNet), x, lineY, 1.7, theme.Line)
-	lineY += 50
-	ui.DrawText(dst, fmt.Sprintf(sh.CreditsFmt, ss.player.Credits), x, lineY, 1.4, theme.Line)
+	drawCentered(fmt.Sprintf(sh.NetFmt, sign, ss.sessionNet), lineY, 1.7, theme.Line)
+	lineY += 44
+	drawCentered(fmt.Sprintf(sh.CreditsFmt, ss.player.Credits), lineY, 1.4, theme.Line)
 }
 
-func (ss *StationShop) drawInfo(dst *ebiten.Image, theme *ui.Theme, x, y, _ float64) {
+// drawShopkeeper は店主画像のプレースホルダ枠を描く（実画像は後日差し替え）。
+func (ss *StationShop) drawShopkeeper(dst *ebiten.Image, theme *ui.Theme, x, y, w, h float64) {
+	vector.DrawFilledRect(dst, float32(x), float32(y), float32(w), float32(h),
+		color.NRGBA{0, 0, 0, 255}, false)
+	vector.StrokeRect(dst, float32(x), float32(y), float32(w), float32(h), 1, theme.Line, false)
+	label := "SHOPKEEPER"
+	lw, lh := ui.MeasureText(label, 1.4)
+	ui.DrawText(dst, label, x+(w-lw)/2, y+(h-lh)/2, 1.4, theme.LineDim)
+}
+
+func (ss *StationShop) drawInfo(dst *ebiten.Image, theme *ui.Theme, x, y, width float64) {
 	sh := i18n.S().Shop
-	ui.DrawText(dst, sh.Info, x, y, 1.6, theme.Line)
 	slot := ss.currentSlot()
 	if slot.Quantity == 0 {
-		ui.DrawText(dst, i18n.S().Common.Empty, x, y+34, 1.3, theme.LineDim)
+		ui.DrawText(dst, i18n.S().Common.Empty, x, y, 1.3, theme.LineDim)
 		return
 	}
-	lineY := y + 34
+	lineY := y
 	ui.DrawText(dst, slot.Item.Name, x, lineY, 1.8, theme.Line)
 	lineY += 32
 	var action string
@@ -345,20 +374,46 @@ func (ss *StationShop) drawInfo(dst *ebiten.Image, theme *ui.Theme, x, y, _ floa
 	}
 	ui.DrawText(dst, action, x, lineY, 1.4, theme.Line)
 	lineY += 32
-	ui.DrawText(dst, slot.Item.Description, x, lineY, 1.1, theme.LineDim)
+	// 説明文は領域幅を超えたら折り返す
+	for _, line := range wrapByWidth(slot.Item.Description, width, 1.1) {
+		ui.DrawText(dst, line, x, lineY, 1.1, theme.LineDim)
+		lineY += 18
+	}
 	// 単位重量（カーゴ計算用）
-	lineY += 22
+	lineY += 4
 	ui.DrawText(dst, fmt.Sprintf(sh.WeightFmt, itemUnitWeight(slot.Item)), x, lineY, 1.1, theme.LineDim)
 	// パーツの場合は性能ステータスを補足表示
 	if !slot.Item.IsResource {
 		if d := entity.PartDefByID(slot.Item.PartID); d != nil {
 			lineY += 22
-			for _, line := range partStatLines(d) {
-				ui.DrawText(dst, line, x, lineY, 1.1, theme.LineDim)
-				lineY += 18
+			for _, stat := range partStatLines(d) {
+				for _, line := range wrapByWidth(stat, width, 1.1) {
+					ui.DrawText(dst, line, x, lineY, 1.1, theme.LineDim)
+					lineY += 18
+				}
 			}
 		}
 	}
+}
+
+// wrapByWidth は maxWidth(px) を超えないように文字(rune)単位で折り返す。
+// 日本語のように空白を含まない文字列にも対応し、文字列中の既存の改行は保持する。
+func wrapByWidth(s string, maxWidth, scale float64) []string {
+	var lines []string
+	for _, para := range strings.Split(s, "\n") {
+		line := ""
+		for _, r := range para {
+			candidate := line + string(r)
+			if w, _ := ui.MeasureText(candidate, scale); w > maxWidth && line != "" {
+				lines = append(lines, line)
+				line = string(r)
+			} else {
+				line = candidate
+			}
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 // partStatLines は def の Kind に応じたステータス文字列を返す。
