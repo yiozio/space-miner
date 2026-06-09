@@ -53,16 +53,26 @@ type StationShop struct {
 	side        int // 0 = shop, 1 = player
 	index       int // 0..shopSlotCount-1
 
-	sessionBuyCount  int
-	sessionSellCount int
-	sessionNet       int
+	// セッション集計（金額ベース）
+	sessionBuyTotal  int // 購入額。購入済みを売り戻すと差し引かれる
+	sessionSellTotal int // 購入していない所持品を売った額
+	sessionNet       int // 収支（クレジット増減の累計 = sell - buy）
+
+	// このセッションで購入し、まだ売り戻していない数量。
+	// 売却時に「購入分の売り戻し」か「元々の所持品の売却」かを判定する。
+	boughtRes   map[entity.ResourceType]int
+	boughtParts map[entity.PartID]int
 }
 
 // NewStationShop は店舗シーンを生成する。
 // 店在庫の構成（並び順・初期入荷数）は data_shop.go を参照。
 // 自分側は毎フレーム refreshPlayerSlots でプレイヤー状態から再構築する。
 func NewStationShop(p *entity.Player) *StationShop {
-	s := &StationShop{player: p}
+	s := &StationShop{
+		player:      p,
+		boughtRes:   map[entity.ResourceType]int{},
+		boughtParts: map[entity.PartID]int{},
+	}
 	for i, id := range shopStockIDs {
 		if i >= shopSlotCount {
 			break
@@ -207,32 +217,53 @@ func (ss *StationShop) transferOne() {
 	if slot.Quantity <= 0 {
 		return
 	}
+	price := slot.Item.Price
 	if ss.side == 0 {
-		if ss.player.Credits < slot.Item.Price {
+		// 購入
+		if ss.player.Credits < price {
 			return
 		}
 		if !ss.player.CanAddWeight(itemUnitWeight(slot.Item)) {
 			return
 		}
-		ss.player.Credits -= slot.Item.Price
-		ss.sessionBuyCount++
-		ss.sessionNet -= slot.Item.Price
+		ss.player.Credits -= price
+		ss.sessionBuyTotal += price
+		ss.sessionNet -= price
 		slot.Quantity--
 		if slot.Item.IsResource {
 			ss.player.Inventory[slot.Item.ResType]++
+			ss.boughtRes[slot.Item.ResType]++
 		} else {
 			ss.player.PartsInventory[slot.Item.PartID]++
+			ss.boughtParts[slot.Item.PartID]++
 		}
+		return
+	}
+
+	// 売却
+	ss.player.Credits += price
+	ss.sessionNet += price
+	slot.Quantity--
+	// このセッションで購入した分を売り戻したなら購入額から差し引き、
+	// それ以外（元々の所持品）は売却額に計上する。
+	bought := false
+	if slot.Item.IsResource {
+		if ss.boughtRes[slot.Item.ResType] > 0 {
+			ss.boughtRes[slot.Item.ResType]--
+			bought = true
+		}
+		ss.player.Inventory[slot.Item.ResType]--
 	} else {
-		ss.player.Credits += slot.Item.Price
-		ss.sessionSellCount++
-		ss.sessionNet += slot.Item.Price
-		slot.Quantity--
-		if slot.Item.IsResource {
-			ss.player.Inventory[slot.Item.ResType]--
-		} else {
-			ss.player.PartsInventory[slot.Item.PartID]--
+		if ss.boughtParts[slot.Item.PartID] > 0 {
+			ss.boughtParts[slot.Item.PartID]--
+			bought = true
 		}
+		ss.player.PartsInventory[slot.Item.PartID]--
+	}
+	if bought {
+		ss.sessionBuyTotal -= price
+	} else {
+		ss.sessionSellTotal += price
 	}
 }
 
@@ -327,9 +358,9 @@ func (ss *StationShop) drawSummary(dst *ebiten.Image, theme *ui.Theme, cx, y flo
 		w, _ := ui.MeasureText(s, scale)
 		ui.DrawText(dst, s, cx-w/2, cy, scale, c)
 	}
-	// 購入数・売却数を横並びにする
-	buy := fmt.Sprintf(sh.BuyCountFmt, ss.sessionBuyCount)
-	sell := fmt.Sprintf(sh.SellCountFmt, ss.sessionSellCount)
+	// 購入額・売却額を横並びにする
+	buy := fmt.Sprintf(sh.BuyAmountFmt, ss.sessionBuyTotal)
+	sell := fmt.Sprintf(sh.SellAmountFmt, ss.sessionSellTotal)
 	bw, _ := ui.MeasureText(buy, 1.4)
 	sw, _ := ui.MeasureText(sell, 1.4)
 	colGap := 32.0

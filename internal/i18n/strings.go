@@ -213,10 +213,10 @@ type ShopStrings struct {
 	Session   string
 	Info      string
 	// セッションサマリ
-	BuyCountFmt  string // "BUY %d"
-	SellCountFmt string // "SELL %d"
-	NetFmt       string // "NET %s%d"
-	CreditsFmt   string // "CR %d"
+	BuyAmountFmt  string // "BUY %d cr"  購入額（売り戻した分は差し引く）
+	SellAmountFmt string // "SELL %d cr" 購入していない所持品を売った額
+	NetFmt        string // "NET %s%d"
+	CreditsFmt    string // "CR %d"
 	// アイテム情報
 	BuyPriceFmt  string // "BUY %d cr"
 	SellPriceFmt string // "SELL %d cr"
