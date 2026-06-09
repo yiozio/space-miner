@@ -265,6 +265,51 @@ func (ss *StationShop) transferOne() {
 	} else {
 		ss.sessionSellTotal += price
 	}
+	// 売った品はショップ在庫に戻す（在庫が無ければ一時的に追加する）
+	ss.addToShopStock(slot.Item)
+}
+
+// addToShopStock は売却された品をショップ在庫へ加える。
+// 同一の品が既にあれば数量を増やし、無ければ空きスロットに一時追加する。
+// 空きが無い場合は何もしない（在庫枠は shopSlotCount 個まで）。
+func (ss *StationShop) addToShopStock(item shopItem) {
+	for i := range ss.shopSlots {
+		s := &ss.shopSlots[i]
+		if s.Quantity > 0 && shopItemSame(s.Item, item) {
+			s.Quantity++
+			return
+		}
+	}
+	for i := range ss.shopSlots {
+		s := &ss.shopSlots[i]
+		if s.Quantity == 0 {
+			s.Item = shopDisplayItem(item)
+			s.Quantity = 1
+			return
+		}
+	}
+}
+
+// shopItemSame は同一の品（資源種別 or パーツ ID が一致）かを判定する。
+func shopItemSame(a, b shopItem) bool {
+	if a.IsResource != b.IsResource {
+		return false
+	}
+	if a.IsResource {
+		return a.ResType == b.ResType
+	}
+	return a.PartID == b.PartID
+}
+
+// shopDisplayItem は売却品をショップ表示向けの内容に組み直す。
+// パーツは PartDef からショップ用説明で作り直し、資源はそのまま使う。
+func shopDisplayItem(item shopItem) shopItem {
+	if !item.IsResource {
+		if d := entity.PartDefByID(item.PartID); d != nil {
+			return itemFromDef(d)
+		}
+	}
+	return item
 }
 
 func (ss *StationShop) Draw(dst *ebiten.Image, d Director) {
