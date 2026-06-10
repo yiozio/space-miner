@@ -59,26 +59,38 @@ const cockpitPivotFracY = (0.12 + 0.88 + 0.88) / 3.0
 type TrailPoint struct{ X, Y float64 }
 
 // 軌跡の保持点数と、点を追加する最小移動距離（px）。
-// 距離で間引くことで、停止中に同じ点が溜まらず、速度に依らず一定の見た目になる。
+// 距離で間引くことで、停止中に同じ点が溜まらず、見た目の密度が一定になる。
+// 尾の長さは「直近 shipTrailFrames フレーム分の移動距離」を目安に速度へ比例させ、
+// 低速時に長い尾が引きずられるのを防ぐ。
 const (
 	shipTrailMax     = 30
 	shipTrailSpacing = 8.0
+	shipTrailFrames  = 30 // 尾が表す移動時間の目安（60fps で 0.5 秒）
 )
 
+// trailTargetLen は現在速度に応じた軌跡の目標点数を返す。
+func (s *Ship) trailTargetLen() int {
+	speed := math.Hypot(s.VX, s.VY)
+	return min(int(speed*shipTrailFrames/shipTrailSpacing), shipTrailMax)
+}
+
 // PushTrail は前回の点から十分動いていれば現在位置を軌跡に追加する。
+// 速度に応じた目標点数を超えた分は古い点から捨てる（減速すると尾が縮む）。
 // Player.Update / Pirate.Update など、機体を動かした後に毎フレーム呼ぶ。
 func (s *Ship) PushTrail() {
+	target := s.trailTargetLen()
 	if n := len(s.Trail); n > 0 {
 		dx := s.X - s.Trail[n-1].X
 		dy := s.Y - s.Trail[n-1].Y
-		if dx*dx+dy*dy < shipTrailSpacing*shipTrailSpacing {
-			return
+		if dx*dx+dy*dy >= shipTrailSpacing*shipTrailSpacing {
+			s.Trail = append(s.Trail, TrailPoint{s.X, s.Y})
 		}
+	} else if target > 0 {
+		s.Trail = append(s.Trail, TrailPoint{s.X, s.Y})
 	}
-	s.Trail = append(s.Trail, TrailPoint{s.X, s.Y})
-	if len(s.Trail) > shipTrailMax {
-		copy(s.Trail, s.Trail[len(s.Trail)-shipTrailMax:])
-		s.Trail = s.Trail[:shipTrailMax]
+	if len(s.Trail) > target {
+		copy(s.Trail, s.Trail[len(s.Trail)-target:])
+		s.Trail = s.Trail[:target]
 	}
 }
 
