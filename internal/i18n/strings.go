@@ -251,7 +251,6 @@ type EditorStrings struct {
 	PartsHeader   string // パレット見出し "PARTS"
 	CellLabel     string // "Cell: %s   %s"
 	CellEmpty     string
-	BrushLabel    string // "Selected: %s (x%d)   Brush: %s"
 	CursorPosFmt  string // "Cursor (%d, %d)"
 	PaletteRowFmt string // "%s%-15s x%d"
 	// 機体性能パネル（グリッド左に表示）

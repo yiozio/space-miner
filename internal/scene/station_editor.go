@@ -19,35 +19,68 @@ const (
 	editorGridSize = editorGridHalf*2 + 1 // 7
 	editorCellSize = 50.0
 	editorCellGap  = 2.0
+
+	editorPaletteW    = 320.0 // パレットカラムの幅
+	editorPaletteRows = 13    // パレットの同時表示行数（見出し込みでグリッドの高さに収まる行数）
 )
 
 // StationEditor は宇宙船編集画面。
 // 7×7 のグリッドにカーソルを置き、左パレットで選んだパーツを設置・取り外しできる。
 // コックピットは原点 (0, 0) に固定（編集対象外）。スペアパーツは Player.PartsInventory。
-// brushRotation は新規配置時に適用される向き（0..3、90° 単位 CW）。R キーで循環。
 type StationEditor struct {
 	player        *entity.Player
 	cursorGX      int
 	cursorGY      int
-	palette       []*entity.PartDef // 配置可能な全 def（一覧表示順）
+	palette       []*entity.PartDef // 在庫のある def（一覧表示順）
 	paletteIx     int               // 現在選択中の palette インデックス
-	brushRotation int               // 0..3
+	paletteScroll int               // パレットの先頭表示行（スクロール位置）
 }
 
 // NewStationEditor は編集シーンを生成する。
-// 既定で在庫のあるパーツを選択、無ければ palette 先頭。
 func NewStationEditor(p *entity.Player) *StationEditor {
-	se := &StationEditor{
-		player:  p,
-		palette: entity.AllPlaceablePartDefs(),
+	se := &StationEditor{player: p}
+	se.refreshPalette()
+	return se
+}
+
+// refreshPalette は在庫のあるパーツだけでパレットを作り直す。
+// 設置・取外で在庫が増減したときに呼ぶ。直前に選択していた def が残っていれば
+// 選択を維持し、一覧から消えた場合は同じ位置に留まるようクランプする。
+func (se *StationEditor) refreshPalette() {
+	var selID entity.PartID
+	hasSel := false
+	if def := se.selectedDef(); def != nil {
+		selID, hasSel = def.ID, true
 	}
+	se.palette = se.palette[:0]
+	for _, def := range entity.AllPlaceablePartDefs() {
+		if se.player.PartsInventory[def.ID] > 0 {
+			se.palette = append(se.palette, def)
+		}
+	}
+	ix := -1
 	for i, def := range se.palette {
-		if p.PartsInventory[def.ID] > 0 {
-			se.paletteIx = i
+		if hasSel && def.ID == selID {
+			ix = i
 			break
 		}
 	}
-	return se
+	if ix >= 0 {
+		se.paletteIx = ix
+	} else if se.paletteIx >= len(se.palette) {
+		se.paletteIx = max(len(se.palette)-1, 0)
+	}
+	se.ensurePaletteVisible()
+}
+
+// ensurePaletteVisible は選択中の行が表示範囲に入るようスクロール位置を追従させる。
+func (se *StationEditor) ensurePaletteVisible() {
+	if se.paletteIx < se.paletteScroll {
+		se.paletteScroll = se.paletteIx
+	}
+	if se.paletteIx >= se.paletteScroll+editorPaletteRows {
+		se.paletteScroll = se.paletteIx - editorPaletteRows + 1
+	}
 }
 
 // selectedDef は現在選択中の PartDef を返す。palette が空のときは nil。
@@ -96,22 +129,17 @@ func (se *StationEditor) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyE) && len(se.palette) > 0 {
 		se.paletteIx = (se.paletteIx + 1) % len(se.palette)
 	}
+	se.ensurePaletteVisible()
 	// カーソルかパレット選択が動いたら移動音。
 	if se.cursorGX != oldGX || se.cursorGY != oldGY || se.paletteIx != oldPal {
 		sound.PlayMenuMove()
 	}
 
-	// 回転: R キー
-	//   - カーソル上に配置済みパーツがあればそれを 90° 回転
-	//   - 無ければブラシ回転（次回設置時の向き）を循環
+	// 回転: R キーでカーソル上の配置済みパーツを 90° 回転（コックピットは除く）
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
-		if i := se.partAtCursor(); i >= 0 {
-			if se.player.Parts[i].Kind() != entity.PartCockpit {
-				se.player.Parts[i].Rotation = (se.player.Parts[i].Rotation + 1) % 4
-				se.player.OnPartsChanged()
-			}
-		} else {
-			se.brushRotation = (se.brushRotation + 1) % 4
+		if i := se.partAtCursor(); i >= 0 && se.player.Parts[i].Kind() != entity.PartCockpit {
+			se.player.Parts[i].Rotation = (se.player.Parts[i].Rotation + 1) % 4
+			se.player.OnPartsChanged()
 		}
 	}
 
@@ -119,12 +147,14 @@ func (se *StationEditor) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 		if se.tryPlace() {
 			sound.PlayMenuSelect()
+			se.refreshPalette()
 		}
 	}
 	// 取り外し
 	if inpututil.IsKeyJustPressed(ebiten.KeyX) || inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
 		if se.tryRemove() {
 			sound.PlayMenuSelect()
+			se.refreshPalette()
 		}
 	}
 	return nil
@@ -154,10 +184,9 @@ func (se *StationEditor) tryPlace() bool {
 		return false
 	}
 	se.player.Parts = append(se.player.Parts, entity.Part{
-		DefID:    def.ID,
-		GX:       se.cursorGX,
-		GY:       se.cursorGY,
-		Rotation: se.brushRotation,
+		DefID: def.ID,
+		GX:    se.cursorGX,
+		GY:    se.cursorGY,
 	})
 	se.player.PartsInventory[def.ID]--
 	se.player.OnPartsChanged()
@@ -189,25 +218,42 @@ func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
 
 	headerScale := 3.0
 	ed := i18n.S().Editor
-	hw, _ := ui.MeasureText(ed.Header, headerScale)
+	hw, hh := ui.MeasureText(ed.Header, headerScale)
 	ui.DrawText(dst, ed.Header, (float64(sw)-hw)/2, 24, headerScale, theme.Line)
 
-	// レイアウト
+	// レイアウト: ショップと同様にヘッダー直下へ整備士画像を大きく表示し、
+	// その下を「性能 | グリッド | パーツ」の3カラムにする。グリッドは画面中央。
 	gridPx := float64(editorGridSize)*editorCellSize + float64(editorGridSize-1)*editorCellGap
-	paletteW := 320.0
+	statsW := 240.0
 	gap := 60.0
-	totalW := gridPx + gap + paletteW
-	startX := (float64(sw) - totalW) / 2
-	gridStartX := startX
+	gridStartX := (float64(sw) - gridPx) / 2
+	statsX := gridStartX - gap - statsW
 	paletteX := gridStartX + gridPx + gap
-	contentY := 100.0
 
-	se.drawStats(dst, theme, 24, contentY) // グリッド左の空きに機体性能
+	portraitY := 24 + hh + 8
+	portraitH := 200.0
+	se.drawMechanic(dst, theme, statsX, portraitY, paletteX+editorPaletteW-statsX, portraitH)
+
+	// 画像の下に3カラムを配置する
+	contentY := portraitY + portraitH + 36
+
+	se.drawStats(dst, theme, statsX, contentY)
+	// カーソル情報（2行）は左カラムの下部に置き、グリッド下端と下揃えにする
+	se.drawCursorInfo(dst, theme, statsX, contentY+gridPx-44)
 	se.drawShipGrid(dst, theme, gridStartX, contentY)
 	se.drawPalette(dst, theme, paletteX, contentY)
-	se.drawCursorInfo(dst, theme, gridStartX, contentY+gridPx+24)
 
 	ui.DrawText(dst, ed.Hint, 20, float64(sh)-30, 1.3, theme.LineDim)
+}
+
+// drawMechanic は整備士画像のプレースホルダ枠を描く（実画像は後日差し替え）。
+func (se *StationEditor) drawMechanic(dst *ebiten.Image, theme *ui.Theme, x, y, w, h float64) {
+	vector.DrawFilledRect(dst, float32(x), float32(y), float32(w), float32(h),
+		color.NRGBA{0, 0, 0, 255}, false)
+	vector.StrokeRect(dst, float32(x), float32(y), float32(w), float32(h), 1, theme.Line, false)
+	label := "MECHANIC"
+	lw, lh := ui.MeasureText(label, 1.4)
+	ui.DrawText(dst, label, x+(w-lw)/2, y+(h-lh)/2, 1.4, theme.LineDim)
 }
 
 // gridCellPos はグリッド (gx, gy) の左上スクリーン座標を返す。
@@ -245,21 +291,35 @@ func (se *StationEditor) drawPalette(dst *ebiten.Image, theme *ui.Theme, x, y fl
 	ed := i18n.S().Editor
 	ui.DrawText(dst, ed.PartsHeader, x, y, 1.6, theme.Line)
 	lineY := y + 32
-	for i, def := range se.palette {
-		qty := se.player.PartsInventory[def.ID]
-		clr := theme.Line
-		if qty == 0 {
-			clr = theme.LineDim
-		}
+	if len(se.palette) == 0 {
+		ui.DrawText(dst, i18n.S().Common.Empty, x, lineY, 1.3, theme.LineDim)
+		return
+	}
+	end := min(se.paletteScroll+editorPaletteRows, len(se.palette))
+	for i := se.paletteScroll; i < end; i++ {
+		def := se.palette[i]
 		prefix := "  "
 		if i == se.paletteIx {
 			prefix = "> "
 		}
 		ui.DrawText(dst,
-			fmt.Sprintf(ed.PaletteRowFmt, prefix, i18n.PartName(def.ID), qty),
-			x, lineY, 1.3, clr)
+			fmt.Sprintf(ed.PaletteRowFmt, prefix, i18n.PartName(def.ID), se.player.PartsInventory[def.ID]),
+			x, lineY, 1.3, theme.Line)
 		lineY += 24
 	}
+
+	// 表示しきれないときは右端にスクロールバーを描く
+	total := len(se.palette)
+	if total <= editorPaletteRows {
+		return
+	}
+	trackX := x + editorPaletteW - 4
+	trackY := y + 32
+	trackH := float64(editorPaletteRows) * 24
+	vector.StrokeRect(dst, float32(trackX), float32(trackY), 4, float32(trackH), 1, theme.LineDim, false)
+	thumbH := max(trackH*float64(editorPaletteRows)/float64(total), 12)
+	thumbY := trackY + (trackH-thumbH)*float64(se.paletteScroll)/float64(total-editorPaletteRows)
+	vector.DrawFilledRect(dst, float32(trackX), float32(thumbY), 4, float32(thumbH), theme.Line, false)
 }
 
 func (se *StationEditor) drawCursorInfo(dst *ebiten.Image, theme *ui.Theme, x, y float64) {
@@ -275,12 +335,6 @@ func (se *StationEditor) drawCursorInfo(dst *ebiten.Image, theme *ui.Theme, x, y
 		ui.DrawText(dst, fmt.Sprintf(ed.CellLabel, name, rotationLabel(p.Rotation)), x, y+22, 1.3, theme.Line)
 	} else {
 		ui.DrawText(dst, ed.CellEmpty, x, y+22, 1.3, theme.LineDim)
-	}
-	if def := se.selectedDef(); def != nil {
-		ui.DrawText(dst,
-			fmt.Sprintf(ed.BrushLabel,
-				i18n.PartName(def.ID), se.player.PartsInventory[def.ID], rotationLabel(se.brushRotation)),
-			x, y+44, 1.3, theme.Line)
 	}
 }
 

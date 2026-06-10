@@ -143,7 +143,6 @@ func newEN() *Strings {
 			PartsHeader:   "PARTS",
 			CellLabel:     "Cell: %s   %s",
 			CellEmpty:     "Cell: Empty",
-			BrushLabel:    "Selected: %s (x%d)   Brush: %s",
 			CursorPosFmt:  "Cursor (%d, %d)",
 			PaletteRowFmt: "%s%-15s x%d",
 			StatsHeader:   "STATS",

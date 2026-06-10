@@ -145,7 +145,6 @@ func newJA() *Strings {
 			PartsHeader:   "パーツ",
 			CellLabel:     "セル: %s   %s",
 			CellEmpty:     "セル: 空",
-			BrushLabel:    "選択: %s (x%d)   ブラシ: %s",
 			CursorPosFmt:  "カーソル (%d, %d)",
 			PaletteRowFmt: "%s%-15s x%d",
 			StatsHeader:   "性能",
