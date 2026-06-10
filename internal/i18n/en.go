@@ -163,7 +163,7 @@ func newEN() *Strings {
 			Accept:           "Accept",
 			Discard:          "Discard",
 			Refresh:          "Refresh",
-			Hint:             "[ Up/Down: Move    Enter: Clear    D: Discard    Esc: Leave ]",
+			Hint:             "[ Arrows: Move    Enter: Clear    D: Discard    Esc: Leave ]",
 			NoQuest:          "(no quest)",
 			RewardFmt:        "REWARD: %d cr",
 			DiscardFmt:       "DISCARD: %d cr",

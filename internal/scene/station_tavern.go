@@ -17,7 +17,7 @@ import (
 )
 
 // StationTavern は宇宙酒場シーン。
-// 3 枠の自動生成クエスト掲示板を表示し、各クエストに対して
+// 4 枠（2x2）の自動生成クエスト掲示板を表示し、各クエストに対して
 // 「CLEAR（要件が満たされていれば実行可）」「DISCARD（破棄コスト支払いで再生成）」を行う。
 // CLEAR / DISCARD のいずれもスロットを差し替えて新しい依頼が現れる。
 type StationTavern struct {
@@ -25,7 +25,7 @@ type StationTavern struct {
 	world       *entity.World
 	stationName string
 	rng         *rand.Rand
-	cursor      int // 0..2
+	cursor      int // 0..3（2x2: 行 = cursor/2, 列 = cursor%2）
 }
 
 // NewStationTavern は対象ステーションの掲示板を初期化（または読込）してシーンを返す。
@@ -47,14 +47,27 @@ func (s *StationTavern) Update(d Director) error {
 		d.Pop()
 		return nil
 	}
+	// 2x2 グリッド移動。左右は矢印キーのみ（D は破棄に使うため WASD は割り当てない）
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
-		if s.cursor > 0 {
-			s.cursor--
+		if s.cursor >= 2 {
+			s.cursor -= 2
 			sound.PlayMenuMove()
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
 		if s.cursor < 2 {
+			s.cursor += 2
+			sound.PlayMenuMove()
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+		if s.cursor%2 == 1 {
+			s.cursor--
+			sound.PlayMenuMove()
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+		if s.cursor%2 == 0 {
 			s.cursor++
 			sound.PlayMenuMove()
 		}
@@ -103,16 +116,22 @@ func (s *StationTavern) Draw(dst *ebiten.Image, d Director) {
 	cw, _ := ui.MeasureText(credits, 1.6)
 	ui.DrawText(dst, credits, float64(sw)-cw-30, 24, 1.6, theme.Line)
 
-	// クエストカード
-	board := s.player.EnsureTavernBoard(s.stationName, s.world, s.rng)
-	cardW := 720.0
+	// レイアウト: ショップと同様にヘッダー直下へバーテンダー画像を大きく表示し、
+	// その下に画像と同じ横幅でクエストカードを 2x2 で並べる
 	cardH := 140.0
 	cardGap := 20.0
-	startX := (float64(sw) - cardW) / 2
-	startY := 24 + hh + 60
-	for i := 0; i < 3; i++ {
-		x := startX
-		y := startY + float64(i)*(cardH+cardGap)
+	cardW := (stationPortraitW - cardGap) / 2
+	startX := (float64(sw) - stationPortraitW) / 2
+
+	portraitY := 24 + hh + 38 // サブタイトルの下
+	drawStationPortrait(dst, theme, "BARTENDER", sw, portraitY)
+
+	// クエストカード（2x2）
+	board := s.player.EnsureTavernBoard(s.stationName, s.world, s.rng)
+	startY := portraitY + stationPortraitH + 24
+	for i := range board.Slots {
+		x := startX + float64(i%2)*(cardW+cardGap)
+		y := startY + float64(i/2)*(cardH+cardGap)
 		s.drawCard(dst, theme, x, y, cardW, cardH, &board.Slots[i], i == s.cursor)
 	}
 

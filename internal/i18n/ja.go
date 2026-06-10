@@ -165,7 +165,7 @@ func newJA() *Strings {
 			Accept:           "受注",
 			Discard:          "破棄",
 			Refresh:          "差替",
-			Hint:             "[ ↑↓: 移動    Enter: 達成    D: 破棄    Esc: 退店 ]",
+			Hint:             "[ 矢印: 移動    Enter: 達成    D: 破棄    Esc: 退店 ]",
 			NoQuest:          "(依頼なし)",
 			RewardFmt:        "報酬: %d cr",
 			DiscardFmt:       "破棄コスト: %d cr",

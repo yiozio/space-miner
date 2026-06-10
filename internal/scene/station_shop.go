@@ -23,6 +23,8 @@ const (
 	shopCellPad    = 8
 	shopSideWidth  = shopGridCols*shopCellSize + (shopGridCols-1)*shopCellPad
 	shopSideHeight = shopGridRows*shopCellSize + (shopGridRows-1)*shopCellPad
+	shopInfoW      = 280.0 // 中央の商品情報カラムの幅
+	shopColGap     = 24.0  // カラム間の隙間
 )
 
 // shopItem はスロット内アイテムの内容。
@@ -324,23 +326,20 @@ func (ss *StationShop) Draw(dst *ebiten.Image, d Director) {
 	hw, hh := ui.MeasureText(header, headerScale)
 	ui.DrawText(dst, header, (float64(sw)-hw)/2, 24, headerScale, theme.Line)
 
-	gap := 24.0
-	infoW := 280.0
 	// 上段は「店在庫 | 商品情報 | 所持品」の3カラム構成（中央寄せ）
-	totalW := float64(shopSideWidth)*2 + infoW + gap*2
+	totalW := float64(shopSideWidth)*2 + shopInfoW + shopColGap*2
 	startX := (float64(sw) - totalW) / 2
 
 	shopX := startX
-	infoX := shopX + float64(shopSideWidth) + gap
-	playerX := infoX + infoW + gap
+	infoX := shopX + float64(shopSideWidth) + shopColGap
+	playerX := infoX + shopInfoW + shopColGap
 
 	// ヘッダー直下に店主画像（プレースホルダ枠）を横幅いっぱいに大きく表示する
 	portraitY := 24 + hh + 8
-	portraitH := 200.0
-	ss.drawShopkeeper(dst, theme, startX, portraitY, totalW, portraitH)
+	drawStationPortrait(dst, theme, "SHOPKEEPER", sw, portraitY)
 
 	// 画像の下にグリッドと商品情報を配置する
-	sideY := portraitY + portraitH + 36
+	sideY := portraitY + stationPortraitH + 36
 
 	sh2 := i18n.S().Shop
 	ui.DrawText(dst, sh2.Header, shopX, sideY-22, 1.6, theme.LineDim)
@@ -348,12 +347,12 @@ func (ss *StationShop) Draw(dst *ebiten.Image, d Director) {
 
 	ss.drawGrid(dst, theme, shopX, sideY, ss.shopSlots[:], ss.side == 0)
 	ss.drawGrid(dst, theme, playerX, sideY, ss.playerSlots[:], ss.side == 1)
-	ss.drawInfo(dst, theme, infoX, sideY, infoW)
+	ss.drawInfo(dst, theme, infoX, sideY, shopInfoW)
 
 	// 収支は中央カラム（グリッドの間）にグリッド下端合わせで配置する
 	summaryH := 100.0
 	summaryY := sideY + float64(shopSideHeight) - summaryH
-	ss.drawSummary(dst, theme, infoX+infoW/2, summaryY)
+	ss.drawSummary(dst, theme, infoX+shopInfoW/2, summaryY)
 
 	ui.DrawText(dst, sh2.Hint, 20, float64(sh)-30, 1.4, theme.LineDim)
 }
@@ -420,16 +419,6 @@ func (ss *StationShop) drawSummary(dst *ebiten.Image, theme *ui.Theme, cx, y flo
 	drawCentered(fmt.Sprintf(sh.NetFmt, sign, ss.sessionNet), lineY, 1.7, theme.Line)
 	lineY += 44
 	drawCentered(fmt.Sprintf(sh.CreditsFmt, ss.player.Credits), lineY, 1.4, theme.Line)
-}
-
-// drawShopkeeper は店主画像のプレースホルダ枠を描く（実画像は後日差し替え）。
-func (ss *StationShop) drawShopkeeper(dst *ebiten.Image, theme *ui.Theme, x, y, w, h float64) {
-	vector.DrawFilledRect(dst, float32(x), float32(y), float32(w), float32(h),
-		color.NRGBA{0, 0, 0, 255}, false)
-	vector.StrokeRect(dst, float32(x), float32(y), float32(w), float32(h), 1, theme.Line, false)
-	label := "SHOPKEEPER"
-	lw, lh := ui.MeasureText(label, 1.4)
-	ui.DrawText(dst, label, x+(w-lw)/2, y+(h-lh)/2, 1.4, theme.LineDim)
 }
 
 func (ss *StationShop) drawInfo(dst *ebiten.Image, theme *ui.Theme, x, y, width float64) {

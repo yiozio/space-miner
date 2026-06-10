@@ -20,8 +20,7 @@ const (
 	editorCellSize = 50.0
 	editorCellGap  = 2.0
 
-	editorPaletteW    = 320.0 // パレットカラムの幅
-	editorPaletteRows = 13    // パレットの同時表示行数（見出し込みでグリッドの高さに収まる行数）
+	editorPaletteRows = 13 // パレットの同時表示行数（見出し込みでグリッドの高さに収まる行数）
 )
 
 // StationEditor は宇宙船編集画面。
@@ -222,38 +221,28 @@ func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
 	ui.DrawText(dst, ed.Header, (float64(sw)-hw)/2, 24, headerScale, theme.Line)
 
 	// レイアウト: ショップと同様にヘッダー直下へ整備士画像を大きく表示し、
-	// その下を「性能 | グリッド | パーツ」の3カラムにする。グリッドは画面中央。
+	// その下へ画像と同じ横幅で「性能 | グリッド | パーツ」の3カラムを収める。
+	// グリッドは画面中央、左右カラムの外端は画像の端に揃える。
 	gridPx := float64(editorGridSize)*editorCellSize + float64(editorGridSize-1)*editorCellGap
-	statsW := 240.0
-	gap := 60.0
+	gap := 24.0
 	gridStartX := (float64(sw) - gridPx) / 2
-	statsX := gridStartX - gap - statsW
+	statsX := (float64(sw) - stationPortraitW) / 2
 	paletteX := gridStartX + gridPx + gap
+	paletteW := statsX + stationPortraitW - paletteX
 
 	portraitY := 24 + hh + 8
-	portraitH := 200.0
-	se.drawMechanic(dst, theme, statsX, portraitY, paletteX+editorPaletteW-statsX, portraitH)
+	drawStationPortrait(dst, theme, "MECHANIC", sw, portraitY)
 
 	// 画像の下に3カラムを配置する
-	contentY := portraitY + portraitH + 36
+	contentY := portraitY + stationPortraitH + 36
 
 	se.drawStats(dst, theme, statsX, contentY)
 	// カーソル情報（2行）は左カラムの下部に置き、グリッド下端と下揃えにする
 	se.drawCursorInfo(dst, theme, statsX, contentY+gridPx-44)
 	se.drawShipGrid(dst, theme, gridStartX, contentY)
-	se.drawPalette(dst, theme, paletteX, contentY)
+	se.drawPalette(dst, theme, paletteX, contentY, paletteW)
 
 	ui.DrawText(dst, ed.Hint, 20, float64(sh)-30, 1.3, theme.LineDim)
-}
-
-// drawMechanic は整備士画像のプレースホルダ枠を描く（実画像は後日差し替え）。
-func (se *StationEditor) drawMechanic(dst *ebiten.Image, theme *ui.Theme, x, y, w, h float64) {
-	vector.DrawFilledRect(dst, float32(x), float32(y), float32(w), float32(h),
-		color.NRGBA{0, 0, 0, 255}, false)
-	vector.StrokeRect(dst, float32(x), float32(y), float32(w), float32(h), 1, theme.Line, false)
-	label := "MECHANIC"
-	lw, lh := ui.MeasureText(label, 1.4)
-	ui.DrawText(dst, label, x+(w-lw)/2, y+(h-lh)/2, 1.4, theme.LineDim)
 }
 
 // gridCellPos はグリッド (gx, gy) の左上スクリーン座標を返す。
@@ -287,7 +276,8 @@ func (se *StationEditor) drawShipGrid(dst *ebiten.Image, theme *ui.Theme, x, y f
 	vector.StrokeRect(dst, float32(cx-2), float32(cy-2), float32(cs+4), float32(cs+4), 2, theme.Line, false)
 }
 
-func (se *StationEditor) drawPalette(dst *ebiten.Image, theme *ui.Theme, x, y float64) {
+// drawPalette は在庫パーツの一覧を幅 w のカラムに描く。
+func (se *StationEditor) drawPalette(dst *ebiten.Image, theme *ui.Theme, x, y, w float64) {
 	ed := i18n.S().Editor
 	ui.DrawText(dst, ed.PartsHeader, x, y, 1.6, theme.Line)
 	lineY := y + 32
@@ -313,7 +303,7 @@ func (se *StationEditor) drawPalette(dst *ebiten.Image, theme *ui.Theme, x, y fl
 	if total <= editorPaletteRows {
 		return
 	}
-	trackX := x + editorPaletteW - 4
+	trackX := x + w - 4
 	trackY := y + 32
 	trackH := float64(editorPaletteRows) * 24
 	vector.StrokeRect(dst, float32(trackX), float32(trackY), 4, float32(trackH), 1, theme.LineDim, false)

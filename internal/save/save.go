@@ -77,8 +77,10 @@ type PlayerState struct {
 }
 
 // BoardState は TavernBoard の永続化形式。
+// 旧セーブ（3 スロット）の JSON を読み込んだ場合、4 番目はゼロ値（空クエスト）
+// になり、EnsureTavernBoard が補充する。
 type BoardState struct {
-	Slots [3]QuestState `json:"slots"`
+	Slots [4]QuestState `json:"slots"`
 }
 
 // QuestState は Quest の永続化形式。enum 系は int で保存する。

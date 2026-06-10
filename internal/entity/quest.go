@@ -42,10 +42,10 @@ type Quest struct {
 // IsEmpty は未生成スロット用の判定（ID が空文字）。
 func (q *Quest) IsEmpty() bool { return q.ID == "" }
 
-// TavernBoard は 1 ステーションの 3 スロット掲示板。
+// TavernBoard は 1 ステーションの 4 スロット掲示板。
 // 各スロットは Quest（IsEmpty()=true で空扱い）。
 type TavernBoard struct {
-	Slots [3]Quest
+	Slots [4]Quest
 }
 
 // QuestProgress は (現在進捗, 目標) を返す。Delivery では持ち資源量、Bounty では撃破差分。
@@ -96,7 +96,8 @@ func (p *Player) ClearQuest(q *Quest) {
 	}
 }
 
-// EnsureTavernBoard はステーションの掲示板を返す。未生成ならランダム 3 枠を生成する。
+// EnsureTavernBoard はステーションの掲示板を返す。未生成ならランダム 4 枠を生成する。
+// 空スロットがあれば補充する（スロット数が増えた旧セーブの読込にも対応する）。
 // クエストはステーション（=同名 FullMap）専用に生成され、Bounty は自マップ固定。
 func (p *Player) EnsureTavernBoard(stationName string, world *World, rng *rand.Rand) *TavernBoard {
 	if p.Tavern == nil {
@@ -105,10 +106,12 @@ func (p *Player) EnsureTavernBoard(stationName string, world *World, rng *rand.R
 	b, ok := p.Tavern[stationName]
 	if !ok {
 		b = &TavernBoard{}
-		for i := 0; i < 3; i++ {
+		p.Tavern[stationName] = b
+	}
+	for i := range b.Slots {
+		if b.Slots[i].IsEmpty() {
 			b.Slots[i] = GenerateQuest(rng, world, p.PiratesKilledByMap, stationName)
 		}
-		p.Tavern[stationName] = b
 	}
 	return b
 }
