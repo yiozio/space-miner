@@ -940,30 +940,33 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 	hud := i18n.S().HUD
 	// ステータス: HP / シールド / FUEL は自機下部のバーで表示するためここから除外。
+	// 積荷・所持金とインベントリは右上に右寄せで表示する。
+	right := float64(sw) - 20
 	statusLine := fmt.Sprintf(hud.CargoFmt,
 		e.player.CargoLoad(), e.player.MaxCargo,
 		e.player.Credits)
-	ui.DrawText(dst, statusLine, 20, 20, 1.5, theme.Line)
+	w, _ := ui.MeasureText(statusLine, 1.5)
+	ui.DrawText(dst, statusLine, right-w, 20, 1.5, theme.Line)
 
 	// インベントリ
 	inv := e.player.Inventory
-	ui.DrawText(dst,
-		fmt.Sprintf(hud.InvFmt,
-			i18n.ResourceName(entity.ResourceIron), inv[entity.ResourceIron],
-			i18n.ResourceName(entity.ResourceBronze), inv[entity.ResourceBronze],
-			i18n.ResourceName(entity.ResourceIce), inv[entity.ResourceIce]),
-		20, 50, 1.5, theme.Line)
-
-	// 速度・座標（デバッグ補助）
-	speed := math.Hypot(e.player.VX, e.player.VY)
-	ui.DrawText(dst,
-		fmt.Sprintf(hud.SpeedPosFmt, speed, e.player.X, e.player.Y),
-		20, 80, 1.2, theme.LineDim)
+	invLine := fmt.Sprintf(hud.InvFmt,
+		i18n.ResourceName(entity.ResourceIron), inv[entity.ResourceIron],
+		i18n.ResourceName(entity.ResourceBronze), inv[entity.ResourceBronze],
+		i18n.ResourceName(entity.ResourceIce), inv[entity.ResourceIce])
+	w, _ = ui.MeasureText(invLine, 1.5)
+	ui.DrawText(dst, invLine, right-w, 50, 1.5, theme.Line)
 
 	// ミニマップ
 	miniW, miniH := float32(180), float32(180)
 	mx := float32(sw) - miniW - 20
 	my := float32(sh) - miniH - 20
+
+	// 速度・座標（デバッグ補助）: ミニマップの直上に右寄せで表示する
+	speed := math.Hypot(e.player.VX, e.player.VY)
+	speedLine := fmt.Sprintf(hud.SpeedPosFmt, speed, e.player.X, e.player.Y)
+	w, h := ui.MeasureText(speedLine, 1.2)
+	ui.DrawText(dst, speedLine, right-w, float64(my)-h-6, 1.2, theme.LineDim)
 	// 不透明の黒背景で星空・小惑星を覆う
 	vector.DrawFilledRect(dst, mx, my, miniW, miniH, color.NRGBA{0, 0, 0, 255}, false)
 	// 敵（生存中の海賊）がいる間は縁を太く赤くして警戒を示す
