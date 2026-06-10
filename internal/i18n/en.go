@@ -144,7 +144,6 @@ func newEN() *Strings {
 			CellLabel:     "Cell: %s   %s",
 			CellEmpty:     "Cell: Empty",
 			CursorPosFmt:  "Cursor (%d, %d)",
-			PaletteRowFmt: "%s%-15s x%d",
 			StatsHeader:   "STATS",
 			StatFirepower: "Firepower",
 			StatHull:      "Hull",

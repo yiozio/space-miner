@@ -21,6 +21,11 @@ const (
 	editorCellGap  = 2.0
 
 	editorPaletteRows = 13 // パレットの同時表示行数（見出し込みでグリッドの高さに収まる行数）
+
+	// 収まらない名前を選択中に流すマーキーの速度（1文字進むフレーム数）と
+	// 先頭位置で一時停止するステップ数。
+	editorMarqueeStepFrames = 12
+	editorMarqueeRestSteps  = 4
 )
 
 // StationEditor は宇宙船編集画面。
@@ -33,6 +38,7 @@ type StationEditor struct {
 	palette       []*entity.PartDef // 在庫のある def（一覧表示順）
 	paletteIx     int               // 現在選択中の palette インデックス
 	paletteScroll int               // パレットの先頭表示行（スクロール位置）
+	marqueeTick   int               // 選択行のマーキー用カウンタ（選択が変わると 0 に戻る）
 }
 
 // NewStationEditor は編集シーンを生成する。
@@ -66,8 +72,12 @@ func (se *StationEditor) refreshPalette() {
 	}
 	if ix >= 0 {
 		se.paletteIx = ix
-	} else if se.paletteIx >= len(se.palette) {
-		se.paletteIx = max(len(se.palette)-1, 0)
+	} else {
+		// 選択していた def が消えた → 別の行を指すのでマーキーを先頭に戻す
+		se.marqueeTick = 0
+		if se.paletteIx >= len(se.palette) {
+			se.paletteIx = max(len(se.palette)-1, 0)
+		}
 	}
 	se.ensurePaletteVisible()
 }
@@ -132,6 +142,12 @@ func (se *StationEditor) Update(d Director) error {
 	// カーソルかパレット選択が動いたら移動音。
 	if se.cursorGX != oldGX || se.cursorGY != oldGY || se.paletteIx != oldPal {
 		sound.PlayMenuMove()
+	}
+	// マーキーは選択が変わったら先頭から流し直す
+	if se.paletteIx != oldPal {
+		se.marqueeTick = 0
+	} else {
+		se.marqueeTick++
 	}
 
 	// 回転: R キーでカーソル上の配置済みパーツを 90° 回転（コックピットは除く）
@@ -285,16 +301,29 @@ func (se *StationEditor) drawPalette(dst *ebiten.Image, theme *ui.Theme, x, y, w
 		ui.DrawText(dst, i18n.S().Common.Empty, x, lineY, 1.3, theme.LineDim)
 		return
 	}
+	// 各行: 名前は左揃え、個数は右揃え。収まらない名前は "…" で省略し、
+	// 選択中の行だけマーキーで 1 文字ずつ左へ流す。
+	const scale = 1.3
+	rowRight := x + w - 12 // 右端はスクロールバーの分を空ける
+	prefixW, _ := ui.MeasureText("> ", scale)
 	end := min(se.paletteScroll+editorPaletteRows, len(se.palette))
 	for i := se.paletteScroll; i < end; i++ {
 		def := se.palette[i]
-		prefix := "  "
-		if i == se.paletteIx {
-			prefix = "> "
+		qty := fmt.Sprintf("x%d", se.player.PartsInventory[def.ID])
+		qw, _ := ui.MeasureText(qty, scale)
+		ui.DrawText(dst, qty, rowRight-qw, lineY, scale, theme.Line)
+
+		selected := i == se.paletteIx
+		if selected {
+			ui.DrawText(dst, "> ", x, lineY, scale, theme.Line)
 		}
-		ui.DrawText(dst,
-			fmt.Sprintf(ed.PaletteRowFmt, prefix, i18n.PartName(def.ID), se.player.PartsInventory[def.ID]),
-			x, lineY, 1.3, theme.Line)
+		nameX := x + prefixW
+		nameW := rowRight - qw - 8 - nameX
+		name := i18n.PartName(def.ID)
+		if selected {
+			name = marqueeText(name, se.marqueeTick, scale, nameW)
+		}
+		ui.DrawText(dst, fitTextEllipsis(name, scale, nameW), nameX, lineY, scale, theme.Line)
 		lineY += 24
 	}
 
@@ -310,6 +339,44 @@ func (se *StationEditor) drawPalette(dst *ebiten.Image, theme *ui.Theme, x, y, w
 	thumbH := max(trackH*float64(editorPaletteRows)/float64(total), 12)
 	thumbY := trackY + (trackH-thumbH)*float64(se.paletteScroll)/float64(total-editorPaletteRows)
 	vector.DrawFilledRect(dst, float32(trackX), float32(thumbY), 4, float32(thumbH), theme.Line, false)
+}
+
+// fitTextEllipsis は s が maxW に収まるならそのまま返し、
+// 収まらない場合は末尾に "…" を付けて収まる長さまで切り詰める。
+func fitTextEllipsis(s string, scale, maxW float64) string {
+	if w, _ := ui.MeasureText(s, scale); w <= maxW {
+		return s
+	}
+	r := []rune(s)
+	for n := len(r) - 1; n > 0; n-- {
+		t := string(r[:n]) + "…"
+		if w, _ := ui.MeasureText(t, scale); w <= maxW {
+			return t
+		}
+	}
+	return "…"
+}
+
+// marqueeText は maxW に収まらない s を tick に応じて 1 文字ずつ左へ流した
+// 部分文字列を返す。先頭位置でしばらく停止し、末尾まで見えたら先頭へ戻る。
+// 収まる場合は s をそのまま返す。
+func marqueeText(s string, tick int, scale, maxW float64) string {
+	if w, _ := ui.MeasureText(s, scale); w <= maxW {
+		return s
+	}
+	r := []rune(s)
+	// 末尾まで表示できる最小のシフト量
+	maxShift := 0
+	for k := range r {
+		if w, _ := ui.MeasureText(string(r[k:]), scale); w <= maxW {
+			maxShift = k
+			break
+		}
+	}
+	cycle := editorMarqueeRestSteps + maxShift + 1
+	pos := (tick / editorMarqueeStepFrames) % cycle
+	shift := max(pos-editorMarqueeRestSteps, 0)
+	return string(r[shift:])
 }
 
 func (se *StationEditor) drawCursorInfo(dst *ebiten.Image, theme *ui.Theme, x, y float64) {

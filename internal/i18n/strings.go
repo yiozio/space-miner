@@ -246,13 +246,12 @@ type ShopStrings struct {
 
 // EditorStrings は機体エディタ。
 type EditorStrings struct {
-	Header        string
-	Hint          string
-	PartsHeader   string // パレット見出し "PARTS"
-	CellLabel     string // "Cell: %s   %s"
-	CellEmpty     string
-	CursorPosFmt  string // "Cursor (%d, %d)"
-	PaletteRowFmt string // "%s%-15s x%d"
+	Header       string
+	Hint         string
+	PartsHeader  string // パレット見出し "PARTS"
+	CellLabel    string // "Cell: %s   %s"
+	CellEmpty    string
+	CursorPosFmt string // "Cursor (%d, %d)"
 	// 機体性能パネル（グリッド左に表示）
 	StatsHeader   string // 見出し "性能"
 	StatFirepower string // "総火力"

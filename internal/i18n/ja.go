@@ -146,7 +146,6 @@ func newJA() *Strings {
 			CellLabel:     "セル: %s   %s",
 			CellEmpty:     "セル: 空",
 			CursorPosFmt:  "カーソル (%d, %d)",
-			PaletteRowFmt: "%s%-15s x%d",
 			StatsHeader:   "性能",
 			StatFirepower: "総火力",
 			StatHull:      "耐久値",
