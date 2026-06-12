@@ -117,7 +117,8 @@ func (t *Title) Draw(dst *ebiten.Image, d Director) {
 	logoScale := logoW / lw
 	logoH := lh * logoScale
 	logoX := (float64(sw)-logoW)/2 - 12
-	logoY := float64(sh) * 0.14
+	// メニュー5項目 + 下部ヒントが収まるよう上寄せ（0.14 だと最下段が画面外に出る）
+	logoY := float64(sh) * 0.05
 	logo.Draw(dst, logoX, logoY, logoScale, theme.Line)
 
 	// ロゴ上に自機を表すコックピット三角形と、その重心で明滅する光点を描く。
@@ -126,7 +127,7 @@ func (t *Title) Draw(dst *ebiten.Image, d Director) {
 	menuScale := 2.0
 	maxW := t.menu.MaxLabelWidth(menuScale)
 	mx := (float64(sw) - maxW) / 2
-	my := logoY + logoH + 80
+	my := logoY + logoH + 60
 	t.menu.Draw(dst, theme, mx, my, menuScale)
 
 	ui.DrawText(dst, s.Hint, 20, float64(sh)-30, 1.5, theme.LineDim)

@@ -20,11 +20,12 @@ const (
 	titleScreenH = 720
 )
 
-// 右上に置く青い惑星（ロゴと重ならないよう左上から移動）。
+// 右上に置く青い惑星。ロゴ右端（x≈988）と重ならないよう、
+// 右端に寄せて一部を画面外に出す（左端 x=1000 で 12px のマージン）。
 var titlePlanetColor = color.NRGBA{0x60, 0xa0, 0xff, 0xff}
 
 const (
-	titlePlanetX = titleScreenW - 180
+	titlePlanetX = titleScreenW - 130
 	titlePlanetY = 150
 	titlePlanetR = 150
 )
