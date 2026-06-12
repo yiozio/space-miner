@@ -20,7 +20,7 @@ const (
 // （実画像は後日差し替え）。y は枠の上端。
 func drawStationPortrait(dst *ebiten.Image, theme *ui.Theme, label string, sw int, y float64) {
 	x := (float64(sw) - stationPortraitW) / 2
-	vector.DrawFilledRect(dst, float32(x), float32(y), float32(stationPortraitW), float32(stationPortraitH),
+	vector.FillRect(dst, float32(x), float32(y), float32(stationPortraitW), float32(stationPortraitH),
 		color.NRGBA{0, 0, 0, 255}, false)
 	vector.StrokeRect(dst, float32(x), float32(y), float32(stationPortraitW), float32(stationPortraitH),
 		1, theme.Line, false)

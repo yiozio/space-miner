@@ -157,7 +157,7 @@ func (s *DialogScene) Draw(dst *ebiten.Image, d Director) {
 		drawOpeningBackground(dst, theme, sw, sh)
 	} else {
 		// 暗いオーバーレイ
-		vector.DrawFilledRect(dst, 0, 0, float32(sw), float32(sh),
+		vector.FillRect(dst, 0, 0, float32(sw), float32(sh),
 			color.NRGBA{0, 0, 0, 180}, false)
 	}
 
@@ -182,7 +182,7 @@ func (s *DialogScene) drawDialogBox(dst *ebiten.Image, theme *ui.Theme, sw, sh i
 	boxW := float64(sw) - boxMargin*2
 
 	// 枠
-	vector.DrawFilledRect(dst, float32(boxX), float32(boxY),
+	vector.FillRect(dst, float32(boxX), float32(boxY),
 		float32(boxW), float32(boxHeight), color.NRGBA{0, 0, 0, 230}, false)
 	vector.StrokeRect(dst, float32(boxX), float32(boxY),
 		float32(boxW), float32(boxHeight), 2, theme.Line, false)
@@ -259,7 +259,7 @@ func drawOpeningBackground(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 
 	fill := theme.Line
 	fill.A = 26
-	vector.DrawFilledCircle(dst, cx, cy, bodyR, fill, true)
+	vector.FillCircle(dst, cx, cy, bodyR, fill, true)
 	vector.StrokeCircle(dst, cx, cy, bodyR, 2, theme.Line, true)
 
 	for _, r := range []float32{bodyR + 60, bodyR + 130, bodyR + 220} {
@@ -275,7 +275,7 @@ func drawOpeningBackground(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 // drawAvatar はアバター枠 + キャラクター固有の簡易顔シンボルを描く。
 func drawAvatar(dst *ebiten.Image, theme *ui.Theme, ch *dialog.Character, x, y, size float64) {
 	// 枠
-	vector.DrawFilledRect(dst, float32(x), float32(y), float32(size), float32(size),
+	vector.FillRect(dst, float32(x), float32(y), float32(size), float32(size),
 		color.NRGBA{0, 0, 0, 255}, false)
 	vector.StrokeRect(dst, float32(x), float32(y), float32(size), float32(size),
 		1, theme.Line, false)
@@ -287,15 +287,15 @@ func drawAvatar(dst *ebiten.Image, theme *ui.Theme, ch *dialog.Character, x, y, 
 	// 頭（キャラ色の半透明塗り + 縁線）
 	fill := ch.Color
 	fill.A = 160
-	vector.DrawFilledCircle(dst, cx, cy, headR, fill, true)
+	vector.FillCircle(dst, cx, cy, headR, fill, true)
 	vector.StrokeCircle(dst, cx, cy, headR, 1.5, ch.Color, true)
 
 	// 目（共通: 2 つの小さな塗り円）
 	eyeOffsetX := headR * 0.4
 	eyeOffsetY := -headR * 0.15
 	eyeR := float32(2)
-	vector.DrawFilledCircle(dst, cx-eyeOffsetX, cy+eyeOffsetY, eyeR, theme.Line, true)
-	vector.DrawFilledCircle(dst, cx+eyeOffsetX, cy+eyeOffsetY, eyeR, theme.Line, true)
+	vector.FillCircle(dst, cx-eyeOffsetX, cy+eyeOffsetY, eyeR, theme.Line, true)
+	vector.FillCircle(dst, cx+eyeOffsetX, cy+eyeOffsetY, eyeR, theme.Line, true)
 
 	// 口（スタイル別）
 	mouthY := cy + headR*0.45

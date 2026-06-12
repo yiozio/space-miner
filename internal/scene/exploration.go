@@ -184,7 +184,6 @@ func (e *Exploration) applyAutoAim() {
 
 	// 各 AutoAim パーツのワールド位置と射程チェック
 	p := e.player
-	g := float64(entity.GridSize)
 	sSin, sCos := math.Sin(p.Angle), math.Cos(p.Angle)
 	dpsSum := 0.0
 	for _, part := range p.Parts {
@@ -192,8 +191,7 @@ func (e *Exploration) applyAutoAim() {
 		if d == nil || d.Kind != entity.PartAutoAim {
 			continue
 		}
-		lx := float64(part.GX) * g
-		ly := float64(part.GY) * g
+		lx, ly := entity.PartLocalCenter(part.GX, part.GY)
 		// 船体描画と同じ R(angle + π/2) ローカル → ワールド変換
 		px := p.X + (-sSin*lx - sCos*ly)
 		py := p.Y + (sCos*lx - sSin*ly)
@@ -671,8 +669,7 @@ func (e *Exploration) handlePlayerAsteroidCollisions() {
 	type partOffset struct{ ox, oy float64 }
 	offsets := make([]partOffset, len(p.Parts))
 	for i, part := range p.Parts {
-		lx := float64(part.GX) * g
-		ly := float64(part.GY) * g
+		lx, ly := entity.PartLocalCenter(part.GX, part.GY)
 		// 船体描画と同じ R(angle + π/2) ローカル→ワールド変換
 		offsets[i] = partOffset{
 			ox: -sSin*lx - sCos*ly,
@@ -756,8 +753,7 @@ func (e *Exploration) handlePlayerPirateCollisions() {
 	type partOffset struct{ ox, oy float64 }
 	pOffsets := make([]partOffset, len(p.Parts))
 	for i, part := range p.Parts {
-		lx := float64(part.GX) * g
-		ly := float64(part.GY) * g
+		lx, ly := entity.PartLocalCenter(part.GX, part.GY)
 		pOffsets[i] = partOffset{
 			ox: -pSin*lx - pCos*ly,
 			oy: pCos*lx - pSin*ly,
@@ -770,8 +766,7 @@ func (e *Exploration) handlePlayerPirateCollisions() {
 		}
 		prSin, prCos := math.Sin(pr.Angle), math.Cos(pr.Angle)
 		for _, prPart := range pr.Parts {
-			lx2 := float64(prPart.GX) * g
-			ly2 := float64(prPart.GY) * g
+			lx2, ly2 := entity.PartLocalCenter(prPart.GX, prPart.GY)
 			prCX := pr.X + (-prSin*lx2 - prCos*ly2)
 			prCY := pr.Y + (prCos*lx2 - prSin*ly2)
 
@@ -968,7 +963,7 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 	w, h := ui.MeasureText(speedLine, 1.2)
 	ui.DrawText(dst, speedLine, right-w, float64(my)-h-6, 1.2, theme.LineDim)
 	// 不透明の黒背景で星空・小惑星を覆う
-	vector.DrawFilledRect(dst, mx, my, miniW, miniH, color.NRGBA{0, 0, 0, 255}, false)
+	vector.FillRect(dst, mx, my, miniW, miniH, color.NRGBA{0, 0, 0, 255}, false)
 	// 敵（生存中の海賊）がいる間は縁を太く赤くして警戒を示す
 	borderW, borderColor := float32(1), theme.Line
 	for _, pr := range e.pirates {
@@ -979,7 +974,7 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 	}
 	vector.StrokeRect(dst, mx, my, miniW, miniH, borderW, borderColor, false)
 	// プレイヤー（中央点）
-	vector.DrawFilledRect(dst, mx+miniW/2-1, my+miniH/2-1, 2, 2, theme.Line, false)
+	vector.FillRect(dst, mx+miniW/2-1, my+miniH/2-1, 2, 2, theme.Line, false)
 	// 小惑星（1 個 = 1 素材で構成されているので、先頭グリッドの素材色で描画）
 	for _, a := range e.asteroids {
 		if len(a.Grids) == 0 {
@@ -993,7 +988,7 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 			continue
 		}
 		c := a.Grids[0].Resource.Info().Color
-		vector.DrawFilledRect(dst, nx-1, ny-1, 2, 2, c, false)
+		vector.FillRect(dst, nx-1, ny-1, 2, 2, c, false)
 	}
 	// 海賊（範囲内は赤い小点 / 範囲外は縁の内側に方向マーカー「<」）
 	mcx, mcy := mx+miniW/2, my+miniH/2
@@ -1001,7 +996,7 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		nx := mcx + float32((pr.X-e.cameraX)*minimapScale)
 		ny := mcy + float32((pr.Y-e.cameraY)*minimapScale)
 		if nx >= mx && nx <= mx+miniW && ny >= my && ny <= my+miniH {
-			vector.DrawFilledRect(dst, nx-1, ny-1, 3, 3, color.NRGBA{0xff, 0x60, 0x40, 0xff}, false)
+			vector.FillRect(dst, nx-1, ny-1, 3, 3, color.NRGBA{0xff, 0x60, 0x40, 0xff}, false)
 			continue
 		}
 		drawMinimapMarker(dst, mcx, mcy, mx, my, miniW, miniH, nx, ny, color.NRGBA{0xff, 0x60, 0x40, 0xff})
@@ -1186,7 +1181,7 @@ func (e *Exploration) drawWarpOverlay(dst *ebiten.Image, theme *ui.Theme, sw, sh
 
 	// ホワイトアウト（sin で中点ピーク）
 	alpha := uint8(pulse * 255)
-	vector.DrawFilledRect(dst, 0, 0, float32(sw), float32(sh), color.NRGBA{255, 255, 255, alpha}, false)
+	vector.FillRect(dst, 0, 0, float32(sw), float32(sh), color.NRGBA{255, 255, 255, alpha}, false)
 }
 
 // drawCelestialBackdrop は天体を FullMap 中心 (mapCX, mapCY) を anchor として描画する。
@@ -1252,7 +1247,7 @@ func drawTrailLightSized(dst *ebiten.Image, sx, sy, base, flicker float64, c col
 	w := base + (rand.Float64()*2-1)*flicker
 	lit := scaleColor(c, 1.3)
 	lit.A = 255
-	vector.DrawFilledCircle(dst, float32(sx), float32(sy), float32(w/2), lit, true)
+	vector.FillCircle(dst, float32(sx), float32(sy), float32(w/2), lit, true)
 }
 
 func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
@@ -1274,16 +1269,16 @@ func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
 	// 暗側ベース（不透明）。ここが影の側として残る。
 	dark := scaleColor(body.Color, 0.9)
 	dark.A = 255
-	vector.DrawFilledCircle(dst, sx, sy, r, dark, true)
+	vector.FillCircle(dst, sx, sy, r, dark, true)
 	// 明側: 元の色を光源（左上）方向にオフセットしてやや小さく描く。
 	// 半径と offset の合計が r 以下になるよう調整して輪郭の外にはみ出さない。
 	lit := body.Color
 	lit.A = 255
-	vector.DrawFilledCircle(dst, sx-r*0.15, sy-r*0.15, r*0.78, lit, true)
+	vector.FillCircle(dst, sx-r*0.15, sy-r*0.15, r*0.78, lit, true)
 	// ハイライト: 光源直接光のように小さく明るい点。
 	hi := scaleColor(body.Color, 1.35)
 	hi.A = 220
-	vector.DrawFilledCircle(dst, sx-r*0.42, sy-r*0.42, r*0.2, hi, true)
+	vector.FillCircle(dst, sx-r*0.42, sy-r*0.42, r*0.2, hi, true)
 	// 輪郭は本体色をやや暗くして縁取り。遠景の球体らしくシャープすぎないように。
 	rim := scaleColor(body.Color, 0.7)
 	rim.A = 255
@@ -1372,8 +1367,7 @@ func (e *Exploration) drawPlayerVitalBars(dst *ebiten.Image, theme *ui.Theme, ps
 	g := float64(entity.GridSize)
 	radius := g / 2
 	for _, part := range e.player.Parts {
-		dx := float64(part.GX) * g
-		dy := float64(part.GY) * g
+		dx, dy := entity.PartLocalCenter(part.GX, part.GY)
 		d := math.Hypot(dx, dy) + g/2
 		if d > radius {
 			radius = d
@@ -1421,10 +1415,10 @@ func drawVitalBar(dst *ebiten.Image, x, y, w, h float64, fill float64, fillColor
 	// 背景（薄い塗り）
 	bg := frameColor
 	bg.A = 80
-	vector.DrawFilledRect(dst, float32(x), float32(y), float32(w), float32(h), bg, false)
+	vector.FillRect(dst, float32(x), float32(y), float32(w), float32(h), bg, false)
 	// フィル
 	if fill > 0 {
-		vector.DrawFilledRect(dst, float32(x), float32(y), float32(w*fill), float32(h), fillColor, false)
+		vector.FillRect(dst, float32(x), float32(y), float32(w*fill), float32(h), fillColor, false)
 	}
 	// 枠
 	vector.StrokeRect(dst, float32(x), float32(y), float32(w), float32(h), 1, frameColor, false)

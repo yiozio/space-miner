@@ -130,8 +130,7 @@ func (p *Pirate) shoot() ([]Bullet, []LaserShot) {
 		case 3:
 			fxL, fyL = 1, 0
 		}
-		cxL := float64(part.GX) * g
-		cyL := float64(part.GY) * g
+		cxL, cyL := PartLocalCenter(part.GX, part.GY)
 		frontLx := cxL + fxL*halfG
 		frontLy := cyL + fyL*halfG
 		wox, woy := toWorld(frontLx, frontLy)

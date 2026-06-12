@@ -35,7 +35,7 @@ func (g *GameOver) Draw(dst *ebiten.Image, d Director) {
 	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
 
 	// 背景の暗いオーバーレイ
-	vector.DrawFilledRect(dst, 0, 0, float32(sw), float32(sh),
+	vector.FillRect(dst, 0, 0, float32(sw), float32(sh),
 		color.NRGBA{0, 0, 0, 220}, false)
 
 	// メインタイトル

@@ -66,7 +66,7 @@ func (b *Bullet) Draw(dst *ebiten.Image, sx, sy, viewVX, viewVY float64, theme *
 		if r <= 0 {
 			r = 3
 		}
-		vector.DrawFilledCircle(dst, float32(sx), float32(sy), r, c, true)
+		vector.FillCircle(dst, float32(sx), float32(sy), r, c, true)
 	case BulletStyleLaser:
 		// 進行方向に長く伸ばす（ワールド速度ベクトルを正規化して固定長）
 		const laserLen = 60.0

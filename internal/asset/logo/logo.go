@@ -5,7 +5,6 @@ package logo
 
 import (
 	_ "embed"
-	"image"
 	"image/color"
 	"sync"
 
@@ -23,49 +22,31 @@ const (
 )
 
 var (
-	once      sync.Once
-	baseVerts []ebiten.Vertex // viewBox 座標のままの塗り頂点（描画時に拡大・移動）
-	indices   []uint16
-
-	// DrawTriangles 用の 1px 白テクスチャ。
-	whiteImage    = ebiten.NewImage(3, 3)
-	whiteSubImage = whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image)
+	once     sync.Once
+	basePath vector.Path // viewBox 座標のままのパス（描画時に拡大・移動）
 )
 
-func init() { whiteImage.Fill(color.White) }
-
-// build は SVG をパースして三角形分割し、頂点をキャッシュする（初回のみ）。
+// build は SVG をパースしてパスをキャッシュする（初回のみ）。
 func build() {
-	var p vector.Path
-	parsePath(extractPathD(svgData), &p)
-	vs, is := p.AppendVerticesAndIndicesForFilling(nil, nil)
-	for i := range vs {
-		vs[i].SrcX, vs[i].SrcY = 1, 1
-	}
-	baseVerts, indices = vs, is
+	parsePath(extractPathD(svgData), &basePath)
 }
 
 // Size はロゴの基準サイズ（viewBox）を返す。
 func Size() (w, h float64) { return NativeW, NativeH }
 
 // Draw は (x, y) を左上、scale 倍、col 色でロゴを描画する。
-// キャッシュ済み頂点を複製して座標と色だけ差し替えるため毎フレーム呼んでよい。
+// キャッシュ済みパスを GeoM で拡大・移動して FillPath で塗る。
 func Draw(dst *ebiten.Image, x, y, scale float64, col color.Color) {
 	once.Do(build)
 
-	cr, cg, cb, ca := col.RGBA()
-	fr, fg, fb, fa := float32(cr)/0xffff, float32(cg)/0xffff, float32(cb)/0xffff, float32(ca)/0xffff
-	sx, sy := float32(x), float32(y)
-	sc := float32(scale)
+	var geoM ebiten.GeoM
+	geoM.Scale(scale, scale)
+	geoM.Translate(x, y)
+	var p vector.Path
+	p.AddPath(&basePath, &vector.AddPathOptions{GeoM: geoM})
 
-	vs := make([]ebiten.Vertex, len(baseVerts))
-	for i := range baseVerts {
-		v := baseVerts[i]
-		v.DstX = sx + v.DstX*sc
-		v.DstY = sy + v.DstY*sc
-		v.ColorR, v.ColorG, v.ColorB, v.ColorA = fr, fg, fb, fa
-		vs[i] = v
-	}
-	op := &ebiten.DrawTrianglesOptions{FillRule: ebiten.FillRuleNonZero, AntiAlias: true}
-	dst.DrawTriangles(vs, indices, whiteSubImage, op)
+	fillOp := &vector.FillOptions{FillRule: vector.FillRuleNonZero}
+	drawOp := &vector.DrawPathOptions{AntiAlias: true}
+	drawOp.ColorScale.ScaleWithColor(col)
+	vector.FillPath(dst, &p, fillOp, drawOp)
 }

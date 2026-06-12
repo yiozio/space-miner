@@ -228,7 +228,7 @@ func (se *StationEditor) tryRemove() bool {
 func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
 	theme := d.Theme()
 	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
-	vector.DrawFilledRect(dst, 0, 0, float32(sw), float32(sh),
+	vector.FillRect(dst, 0, 0, float32(sw), float32(sh),
 		color.NRGBA{0, 0, 0, 220}, false)
 
 	headerScale := 3.0
@@ -338,7 +338,7 @@ func (se *StationEditor) drawPalette(dst *ebiten.Image, theme *ui.Theme, x, y, w
 	vector.StrokeRect(dst, float32(trackX), float32(trackY), 4, float32(trackH), 1, theme.LineDim, false)
 	thumbH := max(trackH*float64(editorPaletteRows)/float64(total), 12)
 	thumbY := trackY + (trackH-thumbH)*float64(se.paletteScroll)/float64(total-editorPaletteRows)
-	vector.DrawFilledRect(dst, float32(trackX), float32(thumbY), 4, float32(thumbH), theme.Line, false)
+	vector.FillRect(dst, float32(trackX), float32(thumbY), 4, float32(thumbH), theme.Line, false)
 }
 
 // fitTextEllipsis は s が maxW に収まるならそのまま返し、

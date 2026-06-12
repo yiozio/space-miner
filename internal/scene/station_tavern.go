@@ -99,7 +99,7 @@ func (s *StationTavern) Draw(dst *ebiten.Image, d Director) {
 	theme := d.Theme()
 	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
 
-	vector.DrawFilledRect(dst, 0, 0, float32(sw), float32(sh),
+	vector.FillRect(dst, 0, 0, float32(sw), float32(sh),
 		color.NRGBA{0, 0, 0, 220}, false)
 
 	// ヘッダ

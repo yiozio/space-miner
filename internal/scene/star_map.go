@@ -249,7 +249,7 @@ func drawStarMapBody(dst *ebiten.Image, body *entity.Celestial, sx, sy float32, 
 	// 本体（半透明塗り）
 	fill := body.Color
 	fill.A = 140
-	vector.DrawFilledCircle(dst, sx, sy, r, fill, true)
+	vector.FillCircle(dst, sx, sy, r, fill, true)
 	vector.StrokeCircle(dst, sx, sy, r, 1.5, body.Color, true)
 
 	// 現在地マーカー（点線風の二重円）

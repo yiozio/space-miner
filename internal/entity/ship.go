@@ -55,6 +55,18 @@ type Ship struct {
 // 三角形の頂点 y 比は (0.12, 0.88, 0.88)（drawPartRaw の inset=0.12 に対応）。
 const cockpitPivotFracY = (0.12 + 0.88 + 0.88) / 3.0
 
+// partPivotShiftY は回転中心（コックピット重心）がセル中心より前寄りにあることによる
+// ローカル y の補正量。パーツ中心のローカル y は GY*GridSize - partPivotShiftY となる。
+// セル基準（GY*GridSize）のまま扱うと、機体描画に対して後方へこの分だけズレる。
+const partPivotShiftY = GridSize * (cockpitPivotFracY - 0.5)
+
+// PartLocalCenter はパーツ (gx, gy) の機体ローカル座標における中心位置を返す。
+// 機体描画（ensureImage の imageOffset）と同じ基準なので、発射位置・衝突判定・
+// エフェクト基点など「描画された機体に合わせたい」計算は必ずこれを使うこと。
+func PartLocalCenter(gx, gy int) (lx, ly float64) {
+	return float64(gx) * GridSize, float64(gy)*GridSize - partPivotShiftY
+}
+
 // TrailPoint は軌跡の1点（ワールド座標）。
 type TrailPoint struct{ X, Y float64 }
 
@@ -241,8 +253,7 @@ func (s *Ship) drawAfterburners(dst *ebiten.Image, sx, sy float64, theme *ui.The
 	for _, p := range s.thrustEmitters() {
 		r := ((p.Rotation % 4) + 4) % 4
 		// パーツ中心のローカル位置
-		cxL := float64(p.GX) * g
-		cyL := float64(p.GY) * g
+		cxL, cyL := PartLocalCenter(p.GX, p.GY)
 		// 回転前の「後端中心オフセット」と「後方ベクトル」: ローカル +y が後方。
 		// 画像は ebiten の GeoM.Rotate(R*π/2) で回転するため、ローカル +y は
 		// (x, y) → (-y, x) に従って回る。これは視覚的に CW 90°×R 回転に相当する。
@@ -331,8 +342,7 @@ func (s *Ship) DrawShieldOutline(dst *ebiten.Image, sx, sy float64, theme *ui.Th
 		ax, ay, bx, by float64
 	}
 	for _, p := range s.Parts {
-		lx := float64(p.GX) * g
-		ly := float64(p.GY) * g
+		lx, ly := PartLocalCenter(p.GX, p.GY)
 		edges := [4]edge{
 			{0, -1, lx - half, ly - half, lx + half, ly - half}, // top
 			{1, 0, lx + half, ly - half, lx + half, ly + half},  // right

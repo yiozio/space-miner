@@ -96,7 +96,7 @@ func (sf *starfield) draw(dst *ebiten.Image, camX, camY float64, theme *ui.Theme
 					wy := st.y + float64(ky)*layer.tileSize
 					sx := wx - ecx + cx
 					sy := wy - ecy + cy
-					vector.DrawFilledRect(dst, float32(sx), float32(sy), 1, 1, c, false)
+					vector.FillRect(dst, float32(sx), float32(sy), 1, 1, c, false)
 				}
 			}
 		}

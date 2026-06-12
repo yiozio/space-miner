@@ -120,7 +120,7 @@ func (w *WorldMapView) Draw(dst *ebiten.Image, d Director) {
 		// 危険を示す赤い破線風（連続したストロークの薄い円 + 中央に強い円）
 		dim := pirateColor
 		dim.A = 90
-		vector.DrawFilledCircle(dst, psx, psy, pr, dim, true)
+		vector.FillCircle(dst, psx, psy, pr, dim, true)
 		vector.StrokeCircle(dst, psx, psy, pr, 1.5, pirateColor, true)
 		// ラベル
 		label := wm.Hostile
@@ -198,7 +198,7 @@ func drawZoneSwatches(dst *ebiten.Image, cx, top float32, z *entity.ResourceZone
 	total := float32(len(z.Mix))*sz + float32(len(z.Mix)-1)*gap
 	x := cx - total/2
 	for _, m := range z.Mix {
-		vector.DrawFilledRect(dst, x, top, sz, sz, m.Resource.Info().Color, false)
+		vector.FillRect(dst, x, top, sz, sz, m.Resource.Info().Color, false)
 		x += sz + gap
 	}
 }

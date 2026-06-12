@@ -73,14 +73,14 @@ func (c *Confirm) Draw(dst *ebiten.Image, d Director) {
 	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
 
 	// 黒半透明オーバーレイ
-	vector.DrawFilledRect(dst, 0, 0, float32(sw), float32(sh),
+	vector.FillRect(dst, 0, 0, float32(sw), float32(sh),
 		color.NRGBA{0, 0, 0, 200}, false)
 
 	// モーダルボックス（中央寄せ）
 	boxW, boxH := float32(540), float32(240)
 	boxX := (float32(sw) - boxW) / 2
 	boxY := (float32(sh) - boxH) / 2
-	vector.DrawFilledRect(dst, boxX, boxY, boxW, boxH, theme.Background, false)
+	vector.FillRect(dst, boxX, boxY, boxW, boxH, theme.Background, false)
 	vector.StrokeRect(dst, boxX, boxY, boxW, boxH, 1, theme.Line, false)
 
 	// メッセージ

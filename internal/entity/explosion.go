@@ -62,7 +62,7 @@ func (e *Explosion) Draw(dst *ebiten.Image, sx, sy float64) {
 	if flashP < 1 {
 		c := e.Color
 		c.A = uint8((1 - flashP) * 220)
-		vector.DrawFilledCircle(dst, float32(sx), float32(sy), float32(10+30*p), c, true)
+		vector.FillCircle(dst, float32(sx), float32(sy), float32(10+30*p), c, true)
 	}
 
 	// 拡大リング 3 本。後発のリングほど開始が遅く、外側まで届く。

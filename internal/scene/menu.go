@@ -98,7 +98,7 @@ func (m *Menu) Draw(dst *ebiten.Image, d Director) {
 	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
 
 	// 黒半透明オーバーレイ
-	vector.DrawFilledRect(dst, 0, 0, float32(sw), float32(sh),
+	vector.FillRect(dst, 0, 0, float32(sw), float32(sh),
 		color.NRGBA{0, 0, 0, 180}, false)
 
 	// ヘッダ

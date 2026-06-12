@@ -149,13 +149,13 @@ func titleOffscreen(x, y, m float64) bool {
 func drawTitlePlanet(dst *ebiten.Image, cx, cy, r float32, base color.NRGBA) {
 	dark := scaleColor(base, 0.9)
 	dark.A = 255
-	vector.DrawFilledCircle(dst, cx, cy, r, dark, true)
+	vector.FillCircle(dst, cx, cy, r, dark, true)
 	lit := base
 	lit.A = 255
-	vector.DrawFilledCircle(dst, cx-r*0.15, cy-r*0.15, r*0.78, lit, true)
+	vector.FillCircle(dst, cx-r*0.15, cy-r*0.15, r*0.78, lit, true)
 	hi := scaleColor(base, 1.35)
 	hi.A = 220
-	vector.DrawFilledCircle(dst, cx-r*0.42, cy-r*0.42, r*0.2, hi, true)
+	vector.FillCircle(dst, cx-r*0.42, cy-r*0.42, r*0.2, hi, true)
 	rim := scaleColor(base, 0.7)
 	rim.A = 255
 	vector.StrokeCircle(dst, cx, cy, r, 1.0, rim, true)
