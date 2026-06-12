@@ -15,7 +15,7 @@ jobs:
           go-version: "1.25"
       - uses: actions/checkout@v6
       - run: go mod tidy
-      - run: env GOOS=js GOARCH=wasm go build -o ./_site/example.wasm ./cmd/game
+      - run: env GOOS=js GOARCH=wasm go build -o ./_site/234WCWtaE9zUPdvcqok0aog1Pg99U0/example.wasm ./cmd/game
       - uses: actions/upload-pages-artifact@v4
   deploy:
     environment:
