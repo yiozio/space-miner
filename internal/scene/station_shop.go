@@ -342,8 +342,11 @@ func (ss *StationShop) Draw(dst *ebiten.Image, d Director) {
 	sideY := portraitY + stationPortraitH + 36
 
 	sh2 := i18n.S().Shop
-	ui.DrawText(dst, sh2.Header, shopX, sideY-22, 1.6, theme.LineDim)
-	ui.DrawText(dst, sh2.Inventory, playerX, sideY-22, 1.6, theme.LineDim)
+	// グリッド上端からラベルの行高 + 余白ぶん上に置く（フォントの行高に追従）
+	_, labelH := ui.MeasureText(sh2.Header, 1.6)
+	labelY := sideY - labelH - 6
+	ui.DrawText(dst, sh2.Header, shopX, labelY, 1.6, theme.LineDim)
+	ui.DrawText(dst, sh2.Inventory, playerX, labelY, 1.6, theme.LineDim)
 
 	ss.drawGrid(dst, theme, shopX, sideY, ss.shopSlots[:], ss.side == 0)
 	ss.drawGrid(dst, theme, playerX, sideY, ss.playerSlots[:], ss.side == 1)
