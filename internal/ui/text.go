@@ -3,27 +3,31 @@ package ui
 import (
 	"image/color"
 
-	"github.com/hajimehoshi/bitmapfont/v4"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
+	"github.com/yiozio/space-miner/internal/asset/font"
 )
 
-// defaultFace はテーマ非依存のテキスト描画用フォント。
-// CJK (日本語) も含む 12px ビットマップフォント。scale で拡大して使う。
-var defaultFace = text.NewGoXFace(bitmapfont.Face)
+// baseTextSize は scale=1 のときのフォントサイズ（px）。
+// 旧ビットマップフォント（12px）とサイズ感を揃えている。
+const baseTextSize = 12
+
+// face は scale に応じたサイズの描画フェイスを返す。
+// TTF（ベクター）なので任意の倍率で輪郭が崩れない。
+func face(scale float64) *text.GoTextFace {
+	return &text.GoTextFace{Source: font.Source(), Size: baseTextSize * scale}
+}
 
 // DrawText は (x, y) を左上として s を描画する。
-// scale は等倍からの拡大率。
+// scale は等倍（12px）からの拡大率。
 func DrawText(dst *ebiten.Image, s string, x, y, scale float64, c color.Color) {
 	op := &text.DrawOptions{}
-	op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(x, y)
 	op.ColorScale.ScaleWithColor(c)
-	text.Draw(dst, s, defaultFace, op)
+	text.Draw(dst, s, face(scale), op)
 }
 
 // MeasureText は scale を考慮した描画サイズを返す。
 func MeasureText(s string, scale float64) (w, h float64) {
-	w, h = text.Measure(s, defaultFace, 0)
-	return w * scale, h * scale
+	return text.Measure(s, face(scale), 0)
 }
