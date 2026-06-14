@@ -23,6 +23,9 @@ type PartDef struct {
 	GunBulletStyle  BulletStyle
 	GunBulletWidth  float64
 	GunBulletImpact bool
+	// GunExplosionRadius > 0 で、発射弾が着弾時に範囲ダメージを与える爆発弾になる。
+	// 値は爆発半径（px）。弾生成時に Bullet.ExplosionRadius へコピーする。
+	GunExplosionRadius float64
 	// GunFireSound: 発射時に鳴らす音の種類（シーン側で効果音にマップ）。
 	GunFireSound GunFireSound
 

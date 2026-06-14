@@ -188,16 +188,17 @@ func (p *Pirate) shoot() ([]Bullet, []LaserShot) {
 			})
 		} else {
 			bullets = append(bullets, Bullet{
-				X:        ox,
-				Y:        oy,
-				VX:       fwx*d.GunBulletSpeed + p.VX,
-				VY:       fwy*d.GunBulletSpeed + p.VY,
-				Life:     bulletLifeFrames,
-				Damage:   d.GunDamage,
-				Hostile:  true,
-				Style:    d.GunBulletStyle,
-				Width:    d.GunBulletWidth,
-				ImpactFX: d.GunBulletImpact,
+				X:               ox,
+				Y:               oy,
+				VX:              fwx*d.GunBulletSpeed + p.VX,
+				VY:              fwy*d.GunBulletSpeed + p.VY,
+				Life:            bulletLifeFrames,
+				Damage:          d.GunDamage,
+				Hostile:         true,
+				Style:           d.GunBulletStyle,
+				Width:           d.GunBulletWidth,
+				ImpactFX:        d.GunBulletImpact,
+				ExplosionRadius: d.GunExplosionRadius,
 			})
 		}
 		if d.GunCooldown > maxCD {

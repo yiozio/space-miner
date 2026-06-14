@@ -25,13 +25,14 @@ var mineArmedColor = color.NRGBA{0xff, 0x60, 0x40, 0xff}
 // 弾の威力・速度・見た目は設置元のパーツ def から引き継ぐ。
 // 自身は移動しない（設置位置に留まる）。
 type Mine struct {
-	X, Y        float64
-	Fuse        int // 残存フレーム（0 で起爆）
-	Damage      int
-	BulletSpeed float64
-	Style       BulletStyle
-	Width       float64
-	ImpactFX    bool
+	X, Y            float64
+	Fuse            int // 残存フレーム（0 で起爆）
+	Damage          int
+	BulletSpeed     float64
+	Style           BulletStyle
+	Width           float64
+	ImpactFX        bool
+	ExplosionRadius float64 // >0 なら起爆弾が着弾時に範囲ダメージを与える
 }
 
 // Update は信管を進め、起爆フレームに達したら true を返す。
@@ -47,16 +48,17 @@ func (m *Mine) Detonate() []Bullet {
 		ang := float64(i) / float64(mineBurstDirs) * (2 * math.Pi)
 		dx, dy := math.Cos(ang), math.Sin(ang)
 		bullets = append(bullets, Bullet{
-			X:        m.X,
-			Y:        m.Y,
-			VX:       dx * m.BulletSpeed,
-			VY:       dy * m.BulletSpeed,
-			Life:     bulletLifeFrames,
-			Damage:   m.Damage,
-			Hostile:  false,
-			Style:    m.Style,
-			Width:    m.Width,
-			ImpactFX: m.ImpactFX,
+			X:               m.X,
+			Y:               m.Y,
+			VX:              dx * m.BulletSpeed,
+			VY:              dy * m.BulletSpeed,
+			Life:            bulletLifeFrames,
+			Damage:          m.Damage,
+			Hostile:         false,
+			Style:           m.Style,
+			Width:           m.Width,
+			ImpactFX:        m.ImpactFX,
+			ExplosionRadius: m.ExplosionRadius,
 		})
 	}
 	return bullets

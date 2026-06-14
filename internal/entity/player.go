@@ -490,14 +490,15 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot, []Mine, []Drone, []GunFireSound
 			cxL, cyL := PartLocalCenter(part.GX, part.GY)
 			wox, woy := toWorld(cxL, cyL)
 			mines = append(mines, Mine{
-				X:           p.X + wox,
-				Y:           p.Y + woy,
-				Fuse:        mineFuseFrames,
-				Damage:      d.GunDamage,
-				BulletSpeed: d.GunBulletSpeed,
-				Style:       d.GunBulletStyle,
-				Width:       d.GunBulletWidth,
-				ImpactFX:    d.GunBulletImpact,
+				X:               p.X + wox,
+				Y:               p.Y + woy,
+				Fuse:            mineFuseFrames,
+				Damage:          d.GunDamage,
+				BulletSpeed:     d.GunBulletSpeed,
+				Style:           d.GunBulletStyle,
+				Width:           d.GunBulletWidth,
+				ImpactFX:        d.GunBulletImpact,
+				ExplosionRadius: d.GunExplosionRadius,
 			})
 			p.gunFireTimers[key] = d.GunCooldown
 			addFireSound(d.GunFireSound)
@@ -551,15 +552,16 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot, []Mine, []Drone, []GunFireSound
 				// 新規弾は同フレーム内で 1 回 Update されるが、機体は発射前に既に
 				// 1 フレーム分 (VX,VY) 進んでいる。その移動量ぶん手前から射出して
 				// 銃口位置に合わせる（前進しながら撃つと射出地点がズレる補正）。
-				X:        ox - p.VX,
-				Y:        oy - p.VY,
-				VX:       fwx*d.GunBulletSpeed + p.VX,
-				VY:       fwy*d.GunBulletSpeed + p.VY,
-				Life:     bulletLifeFrames,
-				Damage:   d.GunDamage,
-				Style:    d.GunBulletStyle,
-				Width:    d.GunBulletWidth,
-				ImpactFX: d.GunBulletImpact,
+				X:               ox - p.VX,
+				Y:               oy - p.VY,
+				VX:              fwx*d.GunBulletSpeed + p.VX,
+				VY:              fwy*d.GunBulletSpeed + p.VY,
+				Life:            bulletLifeFrames,
+				Damage:          d.GunDamage,
+				Style:           d.GunBulletStyle,
+				Width:           d.GunBulletWidth,
+				ImpactFX:        d.GunBulletImpact,
+				ExplosionRadius: d.GunExplosionRadius,
 			})
 		}
 		// このガンを自分の GunCooldown でクールダウンに入れる。

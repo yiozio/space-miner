@@ -110,6 +110,54 @@ func (a *Asteroid) Hit(bx, by float64, damage int) (absorbed bool, pickups []Pic
 	return false, nil
 }
 
+// ContainsPoint は (bx, by) がいずれかのグリッド AABB（自転反映）に入っているかを返す。
+// Hit と同じ点-AABB 判定だが、ダメージは与えない（爆発弾の起爆トリガ判定などに使う）。
+func (a *Asteroid) ContainsPoint(bx, by float64) bool {
+	g := float64(GridSize)
+	sin, cos := math.Sin(-a.Angle), math.Cos(-a.Angle)
+	dx := bx - a.X
+	dy := by - a.Y
+	lx := cos*dx - sin*dy
+	ly := sin*dx + cos*dy
+	for i := range a.Grids {
+		gr := &a.Grids[i]
+		cx := float64(gr.GX) * g
+		cy := float64(gr.GY) * g
+		if lx >= cx-g/2 && lx < cx+g/2 && ly >= cy-g/2 && ly < cy+g/2 {
+			return true
+		}
+	}
+	return false
+}
+
+// HitRadius は (wx, wy) を中心とする半径 radius 内の各グリッドへ damage を与える（範囲ダメージ）。
+// グリッド中心がワールド距離で radius 以内のものを対象とし、破壊されたグリッドの Pickup をまとめて返す。
+// 1 つでもダメージを与えたら anyHit=true。
+func (a *Asteroid) HitRadius(wx, wy, radius float64, damage int) (pickups []Pickup, anyHit bool) {
+	g := float64(GridSize)
+	sin, cos := math.Sin(a.Angle), math.Cos(a.Angle)
+	for i := len(a.Grids) - 1; i >= 0; i-- {
+		gr := &a.Grids[i]
+		lcx := float64(gr.GX) * g
+		lcy := float64(gr.GY) * g
+		gcx := a.X + (cos*lcx - sin*lcy)
+		gcy := a.Y + (sin*lcx + cos*lcy)
+		if math.Hypot(gcx-wx, gcy-wy) > radius {
+			continue
+		}
+		anyHit = true
+		gr.HP -= damage
+		if gr.HP <= 0 {
+			pk := NewPickup(gcx, gcy, gr.Resource)
+			pk.VX = a.VX
+			pk.VY = a.VY
+			pickups = append(pickups, pk)
+			a.Grids = append(a.Grids[:i], a.Grids[i+1:]...)
+		}
+	}
+	return pickups, anyHit
+}
+
 // Empty は全グリッドが破壊された状態か返す。
 func (a *Asteroid) Empty() bool { return len(a.Grids) == 0 }
 

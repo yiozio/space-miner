@@ -35,6 +35,10 @@ type Bullet struct {
 	Style    BulletStyle
 	Width    float64 // Trail/Laser ではライン太さ、Ball では半径
 	ImpactFX bool
+	// ExplosionRadius > 0 の弾は着弾時に範囲ダメージを与える（爆発弾）。
+	// 着弾点を中心に半径内の対象すべてへ Damage を与え、爆発エフェクトを出す。
+	// 0 なら通常の単体着弾。
+	ExplosionRadius float64
 }
 
 func (b *Bullet) Update() {

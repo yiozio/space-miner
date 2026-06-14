@@ -122,6 +122,7 @@ func newEN() *Strings {
 			GunDmgCdFmt:      "DMG %d   COOLDOWN %df",
 			GunBulletSpdFmt:  "BULLET SPD %.1f",
 			GunStyleFmt:      "STYLE %s%s",
+			GunSplashFmt:     "SPLASH R%.0f",
 			BulletStyleTrail: "TRAIL",
 			BulletStyleBall:  "BALL",
 			BulletStyleLaser: "LASER",

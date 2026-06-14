@@ -13,6 +13,7 @@ func newENItems() ItemsStrings {
 			int(entity.PartIDGunRapid):      {Name: "Rapid Gun", Desc: "Light gun. Fast rate, low damage."},
 			int(entity.PartIDGunPlasma):     {Name: "Plasma Cannon", Desc: "Slow plasma orbs. High damage with impact burst."},
 			int(entity.PartIDGunLaser):      {Name: "Laser Pulse", Desc: "Pinpoint laser pulses. Very fast, light damage."},
+			int(entity.PartIDGunRocket):     {Name: "Rocket Launcher", Desc: "Slow heavy rounds. Deals splash damage on impact."},
 			int(entity.PartIDThrusterStd):   {Name: "Thruster", Desc: "Standard engine."},
 			int(entity.PartIDThrusterLight): {Name: "Light Thruster", Desc: "Compact engine. Lower thrust, fuel-efficient."},
 			int(entity.PartIDThrusterHeavy): {Name: "Heavy Thruster", Desc: "High-output engine. Strong thrust, hungry."},

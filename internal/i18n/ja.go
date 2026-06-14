@@ -124,6 +124,7 @@ func newJA() *Strings {
 			GunDmgCdFmt:      "威力 %d   発射間隔 %dF",
 			GunBulletSpdFmt:  "弾速 %.1f",
 			GunStyleFmt:      "弾種 %s%s",
+			GunSplashFmt:     "爆発半径 %.0f",
 			BulletStyleTrail: "TRAIL",
 			BulletStyleBall:  "BALL",
 			BulletStyleLaser: "LASER",

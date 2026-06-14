@@ -228,6 +228,7 @@ type ShopStrings struct {
 	GunDmgCdFmt      string // "DMG %d   COOLDOWN %df"
 	GunBulletSpdFmt  string // "BULLET SPD %.1f"
 	GunStyleFmt      string // "STYLE %s%s" — 第二引数は impact suffix
+	GunSplashFmt     string // "SPLASH R%.0f" — 爆発弾の範囲半径
 	BulletStyleTrail string
 	BulletStyleBall  string
 	BulletStyleLaser string

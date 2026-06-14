@@ -14,6 +14,7 @@ func newJAItems() ItemsStrings {
 			int(entity.PartIDGunRapid):      {Name: "ラピッドガン", Desc: "軽量ガン。連射速度が速いが威力は低い。"},
 			int(entity.PartIDGunPlasma):     {Name: "プラズマキャノン", Desc: "低速プラズマ弾。高威力で着弾時に爆発する。"},
 			int(entity.PartIDGunLaser):      {Name: "レーザーパルス", Desc: "瞬間命中レーザー。極めて高速だが威力は控えめ。"},
+			int(entity.PartIDGunRocket):     {Name: "ロケットランチャー", Desc: "低速の大型弾。着弾時に範囲ダメージ（爆発）を与える。"},
 			int(entity.PartIDThrusterStd):   {Name: "スラスター", Desc: "標準推進機関。"},
 			int(entity.PartIDThrusterLight): {Name: "ライトスラスター", Desc: "小型推進機。推力は控えめだが燃費が良い。"},
 			int(entity.PartIDThrusterHeavy): {Name: "ヘビースラスター", Desc: "大出力推進機。推力大、燃料消費激しめ。"},

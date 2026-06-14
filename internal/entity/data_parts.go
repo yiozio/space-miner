@@ -20,6 +20,7 @@ const (
 	PartIDGunRapid
 	PartIDGunPlasma
 	PartIDGunLaser
+	PartIDGunRocket
 
 	PartIDThrusterStd
 	PartIDThrusterLight
@@ -127,6 +128,21 @@ func init() {
 		GunBulletWidth:  1.5,
 		GunBulletImpact: true,
 		GunFireSound:    FireSoundLaser,
+	})
+	// Rocket Launcher: 低速・低連射の大型弾。着弾時に範囲ダメージ（爆発）を与える。
+	// 直撃でなくても爆発半径内の小惑星・敵をまとめて削れるのが持ち味。
+	registerPartDef(&PartDef{
+		ID: PartIDGunRocket, Kind: PartGun,
+		Price:              360,
+		GunDamage:          4,
+		GunCooldown:        45,
+		GunBulletSpeed:     7.0,
+		Weight:             6,
+		GunBulletStyle:     BulletStyleBall,
+		GunBulletWidth:     5,
+		GunBulletImpact:    true,
+		GunExplosionRadius: 70,
+		GunFireSound:       FireSoundZap,
 	})
 
 	// --- Thruster ---

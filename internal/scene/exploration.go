@@ -688,6 +688,9 @@ func (e *Exploration) Update(d Director) error {
 	}
 	e.bullets = e.bullets[:nb]
 
+	// 爆発弾の着弾処理（範囲ダメージ）。通常の単体命中ループより前に処理する。
+	e.handleExplosiveBullets()
+
 	// 弾 vs 小惑星（衝突したら弾を消し、破壊グリッドからピックアップを生成）
 	// 命中時はその小惑星を AutoAim のターゲットに設定する。プレイヤー弾と敵弾の両方が小惑星を割る。
 	for i := len(e.bullets) - 1; i >= 0; i-- {
@@ -1495,16 +1498,124 @@ func scaleColor(c color.NRGBA, s float64) color.NRGBA {
 // pirateInsideHull は (x, y) が海賊のベース船体（外形近似の衝突円群）内かを判定する。
 // プレイヤー機の被弾判定（handleHostileBulletsHitPlayer）と同じハル外形で当たりを取る。
 func pirateInsideHull(pr *entity.Pirate, x, y float64) bool {
+	return pirateHullWithin(pr, x, y, 0)
+}
+
+// pirateHullWithin は (x, y) が海賊のハル外形（衝突円群）から距離 radius 以内にあるかを返す。
+// radius=0 で点がハル内かの判定（pirateInsideHull）、radius>0 で爆発の波及判定に使う。
+func pirateHullWithin(pr *entity.Pirate, x, y, radius float64) bool {
 	sin, cos := math.Sin(pr.Angle), math.Cos(pr.Angle)
 	for _, c := range pr.HullColliders() {
 		lx, ly := c[0], c[1]
 		wx := pr.X + (-sin*lx - cos*ly)
 		wy := pr.Y + (cos*lx - sin*ly)
-		if math.Hypot(x-wx, y-wy) <= c[2] {
+		if math.Hypot(x-wx, y-wy) <= radius+c[2] {
 			return true
 		}
 	}
 	return false
+}
+
+// playerHullWithin は (x, y) が自機のハル外形（衝突円群）から距離 radius 以内にあるかを返す。
+func (e *Exploration) playerHullWithin(x, y, radius float64) bool {
+	p := e.player
+	sin, cos := math.Sin(p.Angle), math.Cos(p.Angle)
+	for _, c := range p.HullColliders() {
+		lx, ly := c[0], c[1]
+		wx := p.X + (-sin*lx - cos*ly)
+		wy := p.Y + (cos*lx - sin*ly)
+		if math.Hypot(x-wx, y-wy) <= radius+c[2] {
+			return true
+		}
+	}
+	return false
+}
+
+// handleExplosiveBullets は爆発弾（ExplosionRadius>0）の着弾を専用処理する。
+// 通常の単体命中ループより前に走り、対象（味方弾→小惑星/海賊、敵弾→自機）に
+// 直撃した爆発弾を取り除いて detonateBullet で範囲ダメージ＋爆発エフェクトを出す。
+// 直撃しなかった爆発弾はそのまま飛翔を続ける（寿命切れでは爆発しない）。
+func (e *Exploration) handleExplosiveBullets() {
+	for i := len(e.bullets) - 1; i >= 0; i-- {
+		b := &e.bullets[i]
+		if b.ExplosionRadius <= 0 {
+			continue
+		}
+		hx, hy := b.X, b.Y
+		// 小惑星は敵味方どちらの弾でも起爆トリガになる。
+		hit := false
+		for _, a := range e.asteroids {
+			if a.ContainsPoint(hx, hy) {
+				hit = true
+				break
+			}
+		}
+		if !hit {
+			if b.Hostile {
+				hit = e.playerHullWithin(hx, hy, 0)
+			} else {
+				for _, pr := range e.pirates {
+					if pr.HP > 0 && pirateInsideHull(pr, hx, hy) {
+						hit = true
+						break
+					}
+				}
+			}
+		}
+		if !hit {
+			continue
+		}
+		bb := *b
+		e.bullets = append(e.bullets[:i], e.bullets[i+1:]...)
+		e.detonateBullet(&bb, hx, hy)
+	}
+}
+
+// detonateBullet は爆発弾の着弾処理。着弾点 (hx, hy) を中心に b.ExplosionRadius 内の
+// 対象へ b.Damage を与え、爆発エフェクトと音を出す。
+// b.Hostile に応じて対象が変わる（敵弾→自機、味方弾→小惑星と海賊）。
+func (e *Exploration) detonateBullet(b *entity.Bullet, hx, hy float64) {
+	r := b.ExplosionRadius
+	dmg := b.Damage
+	// 小惑星は敵味方どちらの弾でも砕ける。命中小惑星はプレイヤー弾のときだけ AutoAim 対象にする。
+	for _, a := range e.asteroids {
+		pks, anyHit := a.HitRadius(hx, hy, r, dmg)
+		if !anyHit {
+			continue
+		}
+		e.pickups = append(e.pickups, pks...)
+		if len(pks) > 0 {
+			sound.PlayAsteroidBreak()
+		}
+		if !b.Hostile && e.autoAimTarget != a {
+			e.autoAimTarget = a
+			e.autoAimGridIdx = -1
+			e.autoAimDmgAcc = 0
+		}
+	}
+	if b.Hostile {
+		// 敵弾の爆発は自機を巻き込む。
+		if e.playerHullWithin(hx, hy, r) {
+			e.playDamageSound()
+			e.player.Damage(dmg)
+		}
+	} else {
+		// 味方弾の爆発は範囲内の海賊を巻き込む（撃破処理は cullPiratesAndDrop が担う）。
+		for _, pr := range e.pirates {
+			if pr.HP <= 0 {
+				continue
+			}
+			if pirateHullWithin(pr, hx, hy, r) {
+				pr.TakeHit(dmg)
+			}
+		}
+	}
+	c := color.NRGBA{0xff, 0xa0, 0x40, 0xff}
+	if b.Hostile {
+		c = color.NRGBA{0xff, 0x60, 0x40, 0xff}
+	}
+	e.explosions = append(e.explosions, entity.NewExplosion(hx, hy, c, e.spawnRng))
+	sound.PlayExplosion()
 }
 
 // handlePlayerBulletsHitPirates はプレイヤー弾と海賊機体のハル外形判定を行い、

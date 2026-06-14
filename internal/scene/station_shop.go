@@ -500,11 +500,15 @@ func partStatLines(d *entity.PartDef) []string {
 		if d.GunBulletImpact {
 			impact = sh.ImpactFXSuffix
 		}
-		return []string{
+		lines := []string{
 			fmt.Sprintf(sh.GunDmgCdFmt, d.GunDamage, d.GunCooldown),
 			fmt.Sprintf(sh.GunBulletSpdFmt, d.GunBulletSpeed),
 			fmt.Sprintf(sh.GunStyleFmt, style, impact),
 		}
+		if d.GunExplosionRadius > 0 {
+			lines = append(lines, fmt.Sprintf(sh.GunSplashFmt, d.GunExplosionRadius))
+		}
+		return lines
 	case entity.PartThruster:
 		return []string{
 			fmt.Sprintf(sh.ThrusterAccelFmt, d.ThrustAccel, d.ThrustMaxSpeed),

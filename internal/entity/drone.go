@@ -47,13 +47,14 @@ type Drone struct {
 	dmgAcc float64 // 端数ダメージの蓄積（整数化できるまで持ち越す）
 
 	// DroneBullet 用。
-	BulletDamage int
-	BulletSpeed  float64
-	BulletStyle  BulletStyle
-	BulletWidth  float64
-	BulletImpact bool
-	FireInterval int // 弾の発射間隔（フレーム）
-	fireTimer    int // 次弾までの残りフレーム
+	BulletDamage    int
+	BulletSpeed     float64
+	BulletStyle     BulletStyle
+	BulletWidth     float64
+	BulletImpact    bool
+	ExplosionRadius float64 // >0 なら弾が着弾時に範囲ダメージを与える
+	FireInterval    int     // 弾の発射間隔（フレーム）
+	fireTimer       int     // 次弾までの残りフレーム
 }
 
 // NewDroneFromDef は def の性能で (x, y) に設置するドローンを生成する。
@@ -72,6 +73,7 @@ func NewDroneFromDef(def *PartDef, x, y float64, hostile bool) Drone {
 		d.BulletStyle = def.GunBulletStyle
 		d.BulletWidth = def.GunBulletWidth
 		d.BulletImpact = def.GunBulletImpact
+		d.ExplosionRadius = def.GunExplosionRadius
 		d.FireInterval = def.DroneFireInterval
 	} else {
 		d.Mode = DroneBeam
@@ -105,14 +107,15 @@ func (d *Drone) FireBullet(tx, ty float64) Bullet {
 	ang := math.Atan2(ty-d.Y, tx-d.X)
 	return Bullet{
 		X: d.X, Y: d.Y,
-		VX:       math.Cos(ang) * d.BulletSpeed,
-		VY:       math.Sin(ang) * d.BulletSpeed,
-		Life:     bulletLifeFrames,
-		Damage:   d.BulletDamage,
-		Hostile:  d.Hostile,
-		Style:    d.BulletStyle,
-		Width:    d.BulletWidth,
-		ImpactFX: d.BulletImpact,
+		VX:              math.Cos(ang) * d.BulletSpeed,
+		VY:              math.Sin(ang) * d.BulletSpeed,
+		Life:            bulletLifeFrames,
+		Damage:          d.BulletDamage,
+		Hostile:         d.Hostile,
+		Style:           d.BulletStyle,
+		Width:           d.BulletWidth,
+		ImpactFX:        d.BulletImpact,
+		ExplosionRadius: d.ExplosionRadius,
 	}
 }
 
