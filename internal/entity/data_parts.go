@@ -33,6 +33,7 @@ const (
 	PartIDWarpStd
 	PartIDMineLayer
 	PartIDDroneStd
+	PartIDDroneGun
 )
 
 func init() {
@@ -214,7 +215,7 @@ func init() {
 		GunFireSound:    FireSoundBurst,
 	})
 
-	// ドローンランチャー: 発射時に自律攻撃ドローンを設置する。
+	// ドローンランチャー（ビーム型）: 発射時に自律攻撃ドローンを設置する。
 	// ドローンは約10秒間、射程内で最も近い小惑星 or 海賊にビームで継続ダメージを与える。
 	// 射程・DPS は AutoAim 系ステータスを流用し、設置間隔は GunCooldown を使う。
 	registerPartDef(&PartDef{
@@ -225,5 +226,23 @@ func init() {
 		AutoAimRange: 400,
 		AutoAimDPS:   6,
 		GunFireSound: FireSoundZap,
+	})
+
+	// ドローンランチャー（弾型）: 設置したドローンが射程内の対象へ一定間隔で弾を撃つ。
+	// 必中のビーム型と違い命中判定は通常弾と同じ（外しうる）が、着弾までの飛翔があり貫通しない。
+	// 弾の威力・速度・見た目は Gun 系、発射間隔は DroneFireInterval を使う。
+	registerPartDef(&PartDef{
+		ID: PartIDDroneGun, Kind: PartDroneLauncher,
+		Price:             320,
+		Weight:            4,
+		GunCooldown:       150, // 設置間隔 2.5 秒
+		AutoAimRange:      380,
+		GunDamage:         2,
+		GunBulletSpeed:    8.0,
+		GunBulletStyle:    BulletStyleTrail,
+		GunBulletWidth:    2,
+		GunBulletImpact:   false,
+		DroneFireInterval: 30, // 0.5 秒ごとに 1 発
+		GunFireSound:      FireSoundBurst,
 	})
 }

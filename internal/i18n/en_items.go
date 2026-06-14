@@ -24,6 +24,7 @@ func newENItems() ItemsStrings {
 			int(entity.PartIDWarpStd):       {Name: "Warp", Desc: "Warp drive."},
 			int(entity.PartIDMineLayer):     {Name: "Mine Layer", Desc: "Deploys a mine on fire. The mine bursts into 6 bullets after ~1s."},
 			int(entity.PartIDDroneStd):      {Name: "Attack Drone", Desc: "Deploys an autonomous drone on fire. For ~10s it beams the nearest asteroid or enemy."},
+			int(entity.PartIDDroneGun):      {Name: "Gun Drone", Desc: "Deploys an autonomous drone on fire. For ~10s it shoots bullets at the nearest asteroid or enemy."},
 		},
 		Resources: map[int]ItemText{
 			int(entity.ResourceIron):   {Name: "IRON"},

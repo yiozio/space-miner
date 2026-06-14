@@ -128,14 +128,7 @@ func (p *Pirate) deployDrones() []Drone {
 		}
 		cxL, cyL := PartLocalCenter(part.GX, part.GY)
 		wox, woy := toWorld(cxL, cyL)
-		drones = append(drones, Drone{
-			X:       p.X + wox,
-			Y:       p.Y + woy,
-			Life:    droneLifeFrames,
-			Range:   d.AutoAimRange,
-			DPS:     d.AutoAimDPS,
-			Hostile: true,
-		})
+		drones = append(drones, NewDroneFromDef(d, p.X+wox, p.Y+woy, true))
 		if d.GunCooldown > maxCD {
 			maxCD = d.GunCooldown
 		}

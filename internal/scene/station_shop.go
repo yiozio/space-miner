@@ -540,6 +540,15 @@ func partStatLines(d *entity.PartDef) []string {
 			sh.MineLayerNote,
 		}
 	case entity.PartDroneLauncher:
+		if d.GunBulletSpeed > 0 {
+			// 弾型ドローン: 威力・発射間隔・弾速を表示。
+			return []string{
+				fmt.Sprintf(sh.GunDmgCdFmt, d.GunDamage, d.DroneFireInterval),
+				fmt.Sprintf(sh.GunBulletSpdFmt, d.GunBulletSpeed),
+				sh.DroneNote,
+			}
+		}
+		// ビーム型ドローン: 射程・DPS を表示。
 		return []string{
 			fmt.Sprintf(sh.AutoAimRangeFmt, d.AutoAimRange, d.AutoAimDPS),
 			sh.DroneNote,

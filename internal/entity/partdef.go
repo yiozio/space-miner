@@ -61,8 +61,13 @@ type PartDef struct {
 	// AutoAimRange は対象グリッドまでの最大射程（パーツワールド位置からの距離、px）。
 	// AutoAimDPS は射程内のときに毎秒与えるダメージ。
 	// 複数の AutoAim パーツが同じターゲットを射程内に捉えていれば DPS が合算される。
+	// DroneLauncher も AutoAimRange を攻撃射程に、ビーム型は AutoAimDPS を DPS に流用する。
 	AutoAimRange float64
 	AutoAimDPS   float64
+
+	// DroneLauncher 用。弾型ドローン（GunBulletSpeed > 0）の弾発射間隔（フレーム）。
+	// 弾の威力・速度・見た目は Gun 系ステータスを流用する。ビーム型では未使用。
+	DroneFireInterval int
 }
 
 // GunFireSound は発射音の種類。具体的な音色は asset/sound 側で生成し、

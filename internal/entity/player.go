@@ -508,13 +508,7 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot, []Mine, []Drone, []GunFireSound
 		if d.Kind == PartDroneLauncher {
 			cxL, cyL := PartLocalCenter(part.GX, part.GY)
 			wox, woy := toWorld(cxL, cyL)
-			drones = append(drones, Drone{
-				X:     p.X + wox,
-				Y:     p.Y + woy,
-				Life:  droneLifeFrames,
-				Range: d.AutoAimRange,
-				DPS:   d.AutoAimDPS,
-			})
+			drones = append(drones, NewDroneFromDef(d, p.X+wox, p.Y+woy, false))
 			p.gunFireTimers[key] = d.GunCooldown
 			addFireSound(d.GunFireSound)
 			continue

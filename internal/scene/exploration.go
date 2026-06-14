@@ -266,6 +266,14 @@ func (e *Exploration) droneAttack(d *entity.Drone) {
 		if math.Hypot(e.player.X-d.X, e.player.Y-d.Y) > d.Range {
 			return // 射程外
 		}
+		if d.Mode == entity.DroneBullet {
+			// 弾型: 自機へ弾を撃つ（命中判定は敵弾と同じ経路）。
+			if d.Fire() {
+				e.bullets = append(e.bullets, d.FireBullet(e.player.X, e.player.Y))
+			}
+			return
+		}
+		// ビーム型: 必中の継続ダメージ。
 		e.droneBeams = append(e.droneBeams, droneBeam{
 			fromX: d.X, fromY: d.Y, toX: e.player.X, toY: e.player.Y, hostile: true,
 		})
@@ -313,7 +321,16 @@ func (e *Exploration) droneAttack(d *entity.Drone) {
 	if targetAst == nil && targetPirate == nil {
 		return // 射程内に対象なし
 	}
-	// ビーム描画情報（ダメージの有無に関わらず狙っている間は描く）
+
+	if d.Mode == entity.DroneBullet {
+		// 弾型: 対象の現在位置へ弾を撃つ（命中判定は通常弾と同じ経路）。
+		if d.Fire() {
+			e.bullets = append(e.bullets, d.FireBullet(tx, ty))
+		}
+		return
+	}
+
+	// ビーム型: 描画情報（ダメージの有無に関わらず狙っている間は描く）＋必中の継続ダメージ
 	e.droneBeams = append(e.droneBeams, droneBeam{fromX: d.X, fromY: d.Y, toX: tx, toY: ty})
 
 	dmg := d.TickDamage()
