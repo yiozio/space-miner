@@ -136,6 +136,7 @@ func newEN() *Strings {
 			CargoCapFmt:      "CARGO CAP +%.0f",
 			AutoAimRangeFmt:  "RANGE %.0f   DPS %.1f",
 			AutoAimNote:      "BEAMS LAST-HIT ASTEROID",
+			MineLayerNote:    "BURSTS 6 WAYS AFTER ~1s",
 		},
 		Editor: EditorStrings{
 			Header:        "SHIP EDITOR",

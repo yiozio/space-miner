@@ -45,6 +45,7 @@ type Exploration struct {
 	starfield  *starfield
 	asteroids  []*entity.Asteroid
 	bullets    []entity.Bullet
+	mines      []entity.Mine
 	pickups    []entity.Pickup
 	stations   []*entity.Station
 	activeDock *entity.Station // 現在ドック範囲内のステーション。nil なら接岸不可
@@ -480,9 +481,12 @@ func (e *Exploration) Update(d Director) error {
 
 	// 発射（押しっぱなしでクールダウン許可分だけ発射）
 	if ebiten.IsKeyPressed(ebiten.KeySpace) {
-		bullets, lasers, fireSounds := e.player.Shoot()
+		bullets, lasers, mines, fireSounds := e.player.Shoot()
 		if len(bullets) > 0 {
 			e.bullets = append(e.bullets, bullets...)
+		}
+		if len(mines) > 0 {
+			e.mines = append(e.mines, mines...)
 		}
 		for _, l := range lasers {
 			e.fireLaser(l)
@@ -530,6 +534,23 @@ func (e *Exploration) Update(d Director) error {
 			nb++
 		}
 		e.beams = e.beams[:nb]
+	}
+
+	// 機雷の更新（信管を進め、起爆したら 6 方向へ弾を放ち、エフェクトと音を出す）
+	{
+		nm := 0
+		for i := range e.mines {
+			m := &e.mines[i]
+			if m.Update() {
+				e.bullets = append(e.bullets, m.Detonate()...)
+				e.spawnImpact(m.X, m.Y, false)
+				sound.PlayExplosion()
+				continue
+			}
+			e.mines[nm] = *m
+			nm++
+		}
+		e.mines = e.mines[:nm]
 	}
 
 	// 弾の更新と寿命処理
@@ -885,6 +906,12 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		e.player.Ship.DrawShieldOutline(dst, psx, psy, theme)
 	}
 
+	// 設置中の機雷（弾の下に描画）
+	for i := range e.mines {
+		m := &e.mines[i]
+		m.Draw(dst, m.X-e.cameraX+cx, m.Y-e.cameraY+cy, theme)
+	}
+
 	// 弾（カメラ＝プレイヤーが動くので、見かけのトレイル方向にプレイヤー速度を渡す）
 	for i := range e.bullets {
 		b := &e.bullets[i]
@@ -1052,7 +1079,7 @@ func (e *Exploration) buildControlsHelp() string {
 			case entity.ThrustDirRight:
 				hasRgt = true
 			}
-		case entity.PartGun:
+		case entity.PartGun, entity.PartMineLayer:
 			hasGun = true
 		}
 	}
@@ -1143,10 +1170,11 @@ func (e *Exploration) tickWarp() {
 			e.player.VY = 0
 			e.player.ClearTrail() // テレポートで軌跡が伸びないよう消す
 			e.lastMap = dest
-			// ワープ前の局所状態（小惑星・ピックアップ・弾・海賊・着弾・爆発・自動照準）は持ち越さない
+			// ワープ前の局所状態（小惑星・ピックアップ・弾・機雷・海賊・着弾・爆発・自動照準）は持ち越さない
 			e.asteroids = e.asteroids[:0]
 			e.pickups = e.pickups[:0]
 			e.bullets = e.bullets[:0]
+			e.mines = e.mines[:0]
 			e.pirates = e.pirates[:0]
 			e.impacts = e.impacts[:0]
 			e.explosions = e.explosions[:0]

@@ -1,6 +1,8 @@
 package entity
 
 import (
+	"math"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
@@ -21,6 +23,7 @@ const (
 	PartShield
 	PartAutoAim
 	PartWarp
+	PartMineLayer
 )
 
 // Part はグリッド配置されたパーツ。
@@ -134,5 +137,14 @@ func drawPartRaw(dst *ebiten.Image, kind PartKind, x, y, cellSize float32, theme
 	case PartWarp:
 		vector.StrokeRect(dst, x+inset, y+inset, g-inset*2, g-inset*2, 1, line, false)
 		vector.StrokeRect(dst, x+g*0.3, y+g*0.3, g*0.4, g*0.4, 1, line, false)
+	case PartMineLayer:
+		// 機雷本体（円）と放射状のスパイクで「設置兵器」を表現する。
+		vector.StrokeCircle(dst, cx, cy, g*0.26, 1, line, false)
+		for i := range 6 {
+			ang := float64(i) / 6 * (2 * 3.141592653589793)
+			dx := float32(math.Cos(ang))
+			dy := float32(math.Sin(ang))
+			vector.StrokeLine(dst, cx+dx*g*0.26, cy+dy*g*0.26, cx+dx*g*0.40, cy+dy*g*0.40, 1, line, false)
+		}
 	}
 }

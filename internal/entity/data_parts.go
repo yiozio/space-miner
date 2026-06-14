@@ -31,6 +31,7 @@ const (
 	PartIDShieldStd
 	PartIDAutoAimStd
 	PartIDWarpStd
+	PartIDMineLayer
 )
 
 func init() {
@@ -194,5 +195,21 @@ func init() {
 		ID: PartIDWarpStd, Kind: PartWarp,
 		Price:  400,
 		Weight: 8,
+	})
+
+	// 機雷敷設パーツ: 発射時に機体位置へ機雷を設置する。
+	// 機雷は約1秒後に 6 方向へ弾をばらまく（弾の威力・速度・見た目は Gun 系ステータスを流用）。
+	// 設置間隔（GunCooldown）は長めにして連続設置を抑える。
+	registerPartDef(&PartDef{
+		ID: PartIDMineLayer, Kind: PartMineLayer,
+		Price:           300,
+		GunDamage:       2,
+		GunCooldown:     90,
+		GunBulletSpeed:  7.0,
+		Weight:          5,
+		GunBulletStyle:  BulletStyleBall,
+		GunBulletWidth:  3,
+		GunBulletImpact: true,
+		GunFireSound:    FireSoundBurst,
 	})
 }

@@ -445,17 +445,19 @@ func (p *Player) Damage(amount int) {
 	}
 }
 
-// Shoot は各 Gun パーツを個別のクールダウンで発射する（ガンごとに独立）。
+// Shoot は各 Gun / MineLayer パーツを個別のクールダウンで発射する（パーツごとに独立）。
 // 弾は各 Gun の Rotation に従う向きで射出され、発射位置はパーツの前端中心。
-// 戻り値: 通常弾 (Trail/Ball) と瞬間命中レーザー要求 (Laser スタイル)、および
-// この発射で鳴らすべき発射音の種類（重複は除去）の 3 つ。
-// クールダウン中のガンは発射せず、全ガンが待機中なら全て nil。
-func (p *Player) Shoot() ([]Bullet, []LaserShot, []GunFireSound) {
+// MineLayer は向きに依らず機体（パーツ）位置へ機雷を設置する。
+// 戻り値: 通常弾 (Trail/Ball) と瞬間命中レーザー要求 (Laser スタイル)、設置する機雷、および
+// この発射で鳴らすべき発射音の種類（重複は除去）の 4 つ。
+// クールダウン中のパーツは発射せず、全パーツが待機中なら全て nil。
+func (p *Player) Shoot() ([]Bullet, []LaserShot, []Mine, []GunFireSound) {
 	if p.gunFireTimers == nil {
 		p.gunFireTimers = map[[2]int]int{}
 	}
 	var bullets []Bullet
 	var lasers []LaserShot
+	var mines []Mine
 	var fireSounds []GunFireSound
 	seenSound := map[GunFireSound]bool{}
 	sin, cos := math.Sin(p.Angle), math.Cos(p.Angle)
@@ -466,12 +468,34 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot, []GunFireSound) {
 	}
 	for _, part := range p.Parts {
 		d := part.Def()
-		if d == nil || d.Kind != PartGun {
+		if d == nil || (d.Kind != PartGun && d.Kind != PartMineLayer) {
 			continue
 		}
-		// このガンがクールダウン中なら発射しない。
+		// このパーツがクールダウン中なら発射しない。
 		key := [2]int{part.GX, part.GY}
 		if p.gunFireTimers[key] > 0 {
+			continue
+		}
+
+		// 機雷敷設は向きに依らずパーツ位置へ機雷を設置する。
+		if d.Kind == PartMineLayer {
+			cxL, cyL := PartLocalCenter(part.GX, part.GY)
+			wox, woy := toWorld(cxL, cyL)
+			mines = append(mines, Mine{
+				X:           p.X + wox,
+				Y:           p.Y + woy,
+				Fuse:        mineFuseFrames,
+				Damage:      d.GunDamage,
+				BulletSpeed: d.GunBulletSpeed,
+				Style:       d.GunBulletStyle,
+				Width:       d.GunBulletWidth,
+				ImpactFX:    d.GunBulletImpact,
+			})
+			p.gunFireTimers[key] = d.GunCooldown
+			if s := d.GunFireSound; s != FireSoundNone && !seenSound[s] {
+				seenSound[s] = true
+				fireSounds = append(fireSounds, s)
+			}
 			continue
 		}
 		// 発射方向（ローカル）。描画と同じ回転規約 (x,y)→(-y,x) で前方ベクトル
@@ -530,7 +554,7 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot, []GunFireSound) {
 			fireSounds = append(fireSounds, s)
 		}
 	}
-	return bullets, lasers, fireSounds
+	return bullets, lasers, mines, fireSounds
 }
 
 // AddSparePart はスペアパーツインベントリに id を qty 個加算する。

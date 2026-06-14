@@ -242,6 +242,7 @@ type ShopStrings struct {
 	CargoCapFmt      string // "CARGO CAP +%.0f"
 	AutoAimRangeFmt  string // "RANGE %.0f   DPS %.1f"
 	AutoAimNote      string // "BEAMS LAST-HIT ASTEROID"
+	MineLayerNote    string // "BURSTS 6 WAYS AFTER ~1s"
 }
 
 // EditorStrings は機体エディタ。

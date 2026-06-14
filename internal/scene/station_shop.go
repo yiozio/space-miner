@@ -533,6 +533,12 @@ func partStatLines(d *entity.PartDef) []string {
 			fmt.Sprintf(sh.AutoAimRangeFmt, d.AutoAimRange, d.AutoAimDPS),
 			sh.AutoAimNote,
 		}
+	case entity.PartMineLayer:
+		return []string{
+			fmt.Sprintf(sh.GunDmgCdFmt, d.GunDamage, d.GunCooldown),
+			fmt.Sprintf(sh.GunBulletSpdFmt, d.GunBulletSpeed),
+			sh.MineLayerNote,
+		}
 	}
 	return nil
 }

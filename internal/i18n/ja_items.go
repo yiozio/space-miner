@@ -23,6 +23,7 @@ func newJAItems() ItemsStrings {
 			int(entity.PartIDShieldStd):     {Name: "シールド", Desc: "シールド発生器。被弾を吸収し、無被弾 2 秒経過後に再生する。"},
 			int(entity.PartIDAutoAimStd):    {Name: "オートエイム", Desc: "最後に弾の当たった小惑星をビームで自動攻撃する (DOT)。"},
 			int(entity.PartIDWarpStd):       {Name: "ワープドライブ", Desc: "ワープ機関。"},
+			int(entity.PartIDMineLayer):     {Name: "マインレイヤー", Desc: "発射時に機雷を設置する。機雷は約1秒後に6方向へ弾をばらまく。"},
 		},
 		Resources: map[int]ItemText{
 			int(entity.ResourceIron):   {Name: "鉄"},

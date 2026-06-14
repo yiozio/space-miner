@@ -138,6 +138,7 @@ func newJA() *Strings {
 			CargoCapFmt:      "カーゴ +%.0f",
 			AutoAimRangeFmt:  "射程 %.0f   DPS %.1f",
 			AutoAimNote:      "最終命中小惑星をビーム",
+			MineLayerNote:    "約1秒後に6方向へ起爆",
 		},
 		Editor: EditorStrings{
 			Header:        "機体エディタ",
