@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"image/color"
 	"math"
 	"math/rand"
 
@@ -34,7 +35,7 @@ const (
 // プレイヤー機・敵機（海賊船）の双方が共有する。
 type Ship struct {
 	Parts           []Part
-	BaseID          ShipBaseID // 機体ベース（土台）。グリッドサイズ・基礎ステータスを決める。海賊機では未使用。
+	BaseID          ShipBaseID // 機体ベース（土台）。グリッドサイズ・基礎ステータスを決める。プレイヤー・海賊機の双方で使う。
 	X, Y            float64    // ワールド座標
 	VX, VY          float64
 	Angle           float64 // 機体の向き（ラジアン）。0 で +x（右）、CW 増加。
@@ -43,6 +44,10 @@ type Ship struct {
 
 	// Trail は直近の通過位置（古い順、ワールド座標）。描画側が尾を引く軌跡に使う。
 	Trail []TrailPoint
+
+	// LineColor はライン描画色の上書き。ゼロ値（A==0）なら theme.Line を使う。
+	// 海賊機など、テーマと別色で機体を描き分けるために設定する。
+	LineColor color.NRGBA
 
 	// 描画キャッシュ。テーマ変更時に再生成する。
 	cachedTheme  *ui.Theme
@@ -169,6 +174,15 @@ func (s *Ship) ensureImage(theme *ui.Theme) {
 	if s.cachedTheme == theme && s.image != nil {
 		return
 	}
+	// LineColor が指定されていれば、その色でラインを描くテーマ複製を使う
+	// （海賊機などの色分け）。キャッシュ判定は元テーマのポインタで行うため、
+	// 色上書きが固定であればキャッシュはそのまま有効。
+	drawTheme := theme
+	if s.LineColor.A != 0 {
+		tc := *theme
+		tc.Line = s.LineColor
+		drawTheme = &tc
+	}
 	gridHalf := s.GridHalf()
 	g := float64(GridSize)
 	_, hHalf := shipHullExtent(gridHalf, g)
@@ -178,11 +192,11 @@ func (s *Ship) ensureImage(theme *ui.Theme) {
 	center := float64(size) / 2
 	img := ebiten.NewImage(size, size)
 	// ベース船体を先に敷き、その上にパーツを重ねる。
-	DrawShipBase(img, center, center, gridHalf, g, theme)
+	DrawShipBase(img, center, center, gridHalf, g, drawTheme)
 	for _, p := range s.Parts {
 		x := center + float64(p.GX)*g - g/2
 		y := center + float64(p.GY)*g - g/2
-		DrawPart(img, p.Kind(), float32(x), float32(y), float32(GridSize), theme, p.Rotation)
+		DrawPart(img, p.Kind(), float32(x), float32(y), float32(GridSize), drawTheme, p.Rotation)
 	}
 	s.image = img
 	// ピボット（回転中心）は従来どおり原点セルのコックピット重心位置に保つ。
@@ -190,30 +204,6 @@ func (s *Ship) ensureImage(theme *ui.Theme) {
 	s.imageOffsetX = center
 	s.imageOffsetY = center + partPivotShiftY
 	s.cachedTheme = theme
-}
-
-// bounds はパーツ配置のグリッド境界を返す。
-func (s *Ship) bounds() (minGX, minGY, maxGX, maxGY int) {
-	if len(s.Parts) == 0 {
-		return
-	}
-	minGX, maxGX = s.Parts[0].GX, s.Parts[0].GX
-	minGY, maxGY = s.Parts[0].GY, s.Parts[0].GY
-	for _, p := range s.Parts[1:] {
-		if p.GX < minGX {
-			minGX = p.GX
-		}
-		if p.GX > maxGX {
-			maxGX = p.GX
-		}
-		if p.GY < minGY {
-			minGY = p.GY
-		}
-		if p.GY > maxGY {
-			maxGY = p.GY
-		}
-	}
-	return
 }
 
 // DrawAt はスクリーン座標 (sx, sy) を機体中心として船体を描画する。

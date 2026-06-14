@@ -12,19 +12,26 @@ Accepted
 ## Decision
 
 ### 型と AI
-- `Pirate` は `Ship` を継承し、HP / Pattern / fireTimer / 描画キャッシュを持つ。
+- `Pirate` は `Ship` を継承し、HP / Pattern / fireTimer を持つ。
+  機体構成・描画・当たり判定はプレイヤー機と同じ「ベース船体（土台）+ グリッドパーツ」方式を共有する
+  （`internal/entity/shipbase.go`。コックピットはベースが内包するため `Parts` にコックピットは置かない）。
+  `Pattern.BaseID` でベースを選べる（ゼロ値は `ShipBasePebble`=3x3）。
 - AI（`Pirate.Update`）は単純な追跡 + 射撃：
   - プレイヤー方向への最短旋回（`Pattern.TurnSpeed`）。
   - 距離が `PreferredDist + 80` を超えれば追跡推進、近ければ慣性で滑る。
   - `MaxSpeed` でクランプ、軽いドラッグ (0.99) で暴走を抑制。
   - 距離 < `FireRange` かつ機首ずれ < 0.35 rad で発射。
 - `shoot()` は `([]Bullet, []LaserShot)` を返す（ADR 0007 と同じ規約）。
-- 描画は専用の赤色ライン (`pirateLineColor=#ff6040`) で `Ship.image` を別キャッシュ生成、
-  さらに識別用の赤い輪郭リングを重ねる。
+- 描画は共通の `Ship.DrawAt`（ベース船体 + グリッドパーツ）に委譲し、`Ship.LineColor` で
+  ライン色を赤 (`pirateLineColor=#ff6040`) に上書きする。画像キャッシュは元テーマのポインタで
+  判定するため、色上書きが固定でもキャッシュは有効。敵識別は赤いライン色で行い、輪郭リングは描かない。
+- 被弾判定はベース船体の外形を近似する衝突円群（`Ship.HullColliders`）で取り、
+  プレイヤー機の被弾判定と同一方式に揃える（旧来の半径 30 円判定は撤去）。
+  弾命中・レーザー命中の双方がハル外形で当たる。
 
 ### パターン定義
 - `PiratePattern`（`internal/entity/data_pirates.go`）が機体構成 + AI パラメータ + ドロップを保持：
-  - `Parts`、`MaxHP`、`TurnSpeed` / `ThrustAccel` / `MaxSpeed` / `PreferredDist` / `FireRange`
+  - `Parts`、`BaseID`（ゼロ値 = Pebble）、`MaxHP`、`TurnSpeed` / `ThrustAccel` / `MaxSpeed` / `PreferredDist` / `FireRange`
   - `DropCreditsMin..Max`、`PartDropRate`、`PartDrops []PartID`
 - 初期 3 パターン: `Scout`（軽量速攻）/ `Brawler`（中型 2 連装）/ `Cruiser`（重型ガン + 装甲）。
 

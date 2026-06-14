@@ -5,7 +5,6 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/yiozio/space-miner/internal/ui"
 )
@@ -18,17 +17,14 @@ var (
 
 // Pirate は敵 NPC 機体。Ship を継承し、簡易な追尾 AI と発射制御を持つ。
 // 機体構成と行動パラメータは PiratePattern から決まる。
+// 描画・当たり判定はプレイヤー機と同じ「ベース船体 + グリッドパーツ」方式を共有し、
+// 敵識別のためライン色を pirateLineColor に上書きして描く（Ship.LineColor）。
 type Pirate struct {
 	Ship
 	HP        int
 	MaxHP     int
 	Pattern   *PiratePattern
 	fireTimer int
-	// 描画キャッシュ（海賊専用色で生成）
-	cachedTheme *ui.Theme
-	image       *ebiten.Image
-	imgOffsetX  float64
-	imgOffsetY  float64
 }
 
 // NewPirate は (x, y) に pattern に従う海賊機を生成する。最初は player 方向を向く。
@@ -38,9 +34,11 @@ func NewPirate(x, y float64, playerX, playerY float64, pattern *PiratePattern) *
 	angle := math.Atan2(playerY-y, playerX-x)
 	return &Pirate{
 		Ship: Ship{
-			Parts: parts,
-			X:     x, Y: y,
-			Angle: angle,
+			Parts:  parts,
+			BaseID: pattern.BaseID, // ゼロ値は ShipBasePebble（3x3 ベース）
+			X:      x, Y: y,
+			Angle:     angle,
+			LineColor: pirateLineColor, // 敵識別の赤系ラインで機体を描く
 		},
 		HP:      pattern.MaxHP,
 		MaxHP:   pattern.MaxHP,
@@ -182,51 +180,10 @@ func (p *Pirate) TakeHit(dmg int) (killed bool) {
 }
 
 // DrawAt は海賊機をスクリーン (sx, sy) を中心に描画する。
-// プレイヤー機と区別するため、ライン色を pirateLineColor に置換した
-// 専用の船体画像を内部キャッシュする。
+// 機体本体はプレイヤーと共通の Ship.DrawAt（ベース船体 + グリッドパーツ）で描く。
+// 敵識別はライン色の赤上書き（Ship.LineColor）で行うため、輪郭リングは描かない。
 func (p *Pirate) DrawAt(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
-	p.ensureImage(theme)
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(-p.imgOffsetX, -p.imgOffsetY)
-	op.GeoM.Rotate(p.Angle + math.Pi/2)
-	op.GeoM.Translate(sx, sy)
-	dst.DrawImage(p.image, op)
-
-	// 敵識別: 赤い輪郭リング
-	vector.StrokeCircle(dst, float32(sx), float32(sy), 30, 1.5, pirateLineColor, true)
-}
-
-// DrawShipAt は識別リング無しで機体画像だけを (sx, sy) 中心に描画する。
-// タイトル背景など、敵 HUD を出したくない場面で使う。
-func (p *Pirate) DrawShipAt(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
-	p.ensureImage(theme)
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(-p.imgOffsetX, -p.imgOffsetY)
-	op.GeoM.Rotate(p.Angle + math.Pi/2)
-	op.GeoM.Translate(sx, sy)
-	dst.DrawImage(p.image, op)
-}
-
-func (p *Pirate) ensureImage(theme *ui.Theme) {
-	if p.cachedTheme == theme && p.image != nil {
-		return
-	}
-	minGX, minGY, maxGX, maxGY := p.bounds()
-	w := (maxGX - minGX + 1) * GridSize
-	h := (maxGY - minGY + 1) * GridSize
-	img := ebiten.NewImage(w, h)
-	pirateTheme := *theme
-	pirateTheme.Line = pirateLineColor
-	for _, part := range p.Parts {
-		x := float32((part.GX - minGX) * GridSize)
-		y := float32((part.GY - minGY) * GridSize)
-		DrawPart(img, part.Kind(), x, y, float32(GridSize), &pirateTheme, part.Rotation)
-	}
-	p.image = img
-	// コックピット三角形の重心を回転中心とする（軌跡・光点もここに揃う）
-	p.imgOffsetX = float64(-minGX*GridSize) + float64(GridSize)/2
-	p.imgOffsetY = float64(-minGY*GridSize) + float64(GridSize)*cockpitPivotFracY
-	p.cachedTheme = theme
+	p.Ship.DrawAt(dst, sx, sy, theme)
 }
 
 // normalizeAngle は角度を [-π, π] に丸める。

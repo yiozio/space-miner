@@ -120,7 +120,7 @@ func (bg *titleBackground) draw(dst *ebiten.Image, theme *ui.Theme) {
 	}
 	if bg.pirate != nil {
 		drawShipTrail(dst, bg.pirate.Trail, 0, 0, pirateTrailColor)
-		bg.pirate.DrawShipAt(dst, bg.pirate.X, bg.pirate.Y, theme)
+		bg.pirate.DrawAt(dst, bg.pirate.X, bg.pirate.Y, theme)
 		drawTrailLight(dst, bg.pirate.X, bg.pirate.Y, pirateTrailColor)
 	}
 }

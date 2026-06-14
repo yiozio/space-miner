@@ -29,7 +29,10 @@ const (
 type PiratePattern struct {
 	ID    PiratePatternID
 	Parts []Part
-	MaxHP int
+	// BaseID は機体ベース（土台）。ゼロ値は ShipBasePebble（3x3 グリッド）。
+	// コックピット機能はベースが内包するため、Parts にコックピットは置かない。
+	BaseID ShipBaseID
+	MaxHP  int
 
 	TurnSpeed     float64
 	ThrustAccel   float64
@@ -47,7 +50,6 @@ var piratePatterns = map[PiratePatternID]*PiratePattern{
 	PiratePatternScout: {
 		ID: PiratePatternScout,
 		Parts: []Part{
-			{DefID: PartIDCockpit, GX: 0, GY: 0},
 			{DefID: PartIDGunStarter, GX: 0, GY: -1},
 			{DefID: PartIDThrusterLight, GX: 0, GY: 1},
 		},
@@ -65,7 +67,6 @@ var piratePatterns = map[PiratePatternID]*PiratePattern{
 	PiratePatternBrawler: {
 		ID: PiratePatternBrawler,
 		Parts: []Part{
-			{DefID: PartIDCockpit, GX: 0, GY: 0},
 			{DefID: PartIDGunMkI, GX: -1, GY: 0},
 			{DefID: PartIDGunMkI, GX: 1, GY: 0},
 			{DefID: PartIDArmorStd, GX: 0, GY: -1},
@@ -85,7 +86,6 @@ var piratePatterns = map[PiratePatternID]*PiratePattern{
 	PiratePatternCruiser: {
 		ID: PiratePatternCruiser,
 		Parts: []Part{
-			{DefID: PartIDCockpit, GX: 0, GY: 0},
 			{DefID: PartIDGunMkII, GX: -1, GY: -1},
 			{DefID: PartIDGunMkII, GX: 1, GY: -1},
 			{DefID: PartIDArmorStd, GX: -1, GY: 0},

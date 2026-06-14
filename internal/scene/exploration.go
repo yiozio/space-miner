@@ -1343,10 +1343,22 @@ func scaleColor(c color.NRGBA, s float64) color.NRGBA {
 	}
 }
 
-// 海賊の判定半径（弾命中・カル距離計算）
-const pirateHitRadius = 30.0
+// pirateInsideHull は (x, y) が海賊のベース船体（外形近似の衝突円群）内かを判定する。
+// プレイヤー機の被弾判定（handleHostileBulletsHitPlayer）と同じハル外形で当たりを取る。
+func pirateInsideHull(pr *entity.Pirate, x, y float64) bool {
+	sin, cos := math.Sin(pr.Angle), math.Cos(pr.Angle)
+	for _, c := range pr.HullColliders() {
+		lx, ly := c[0], c[1]
+		wx := pr.X + (-sin*lx - cos*ly)
+		wy := pr.Y + (cos*lx - sin*ly)
+		if math.Hypot(x-wx, y-wy) <= c[2] {
+			return true
+		}
+	}
+	return false
+}
 
-// handlePlayerBulletsHitPirates はプレイヤー弾と海賊機体の円-点判定を行い、
+// handlePlayerBulletsHitPirates はプレイヤー弾と海賊機体のハル外形判定を行い、
 // 命中した弾を消費して該当海賊にダメージを与える（敵弾・既消滅弾はスキップ）。
 func (e *Exploration) handlePlayerBulletsHitPirates() {
 	for i := len(e.bullets) - 1; i >= 0; i-- {
@@ -1358,7 +1370,7 @@ func (e *Exploration) handlePlayerBulletsHitPirates() {
 			if pr.HP <= 0 {
 				continue
 			}
-			if math.Hypot(b.X-pr.X, b.Y-pr.Y) > pirateHitRadius {
+			if !pirateInsideHull(pr, b.X, b.Y) {
 				continue
 			}
 			pr.TakeHit(b.Damage)
@@ -1537,18 +1549,24 @@ func (e *Exploration) fireLaser(l entity.LaserShot) {
 	pirateIdx := -1
 	playerHit := false
 	if !l.Hostile {
-		// プレイヤーが撃ったレーザー → 海賊にダメージ
+		// プレイヤーが撃ったレーザー → 海賊にダメージ。ハル外形の衝突円群で最近接を取る。
 		for i, pr := range e.pirates {
 			if pr.HP <= 0 {
 				continue
 			}
-			if t, ok := raySphereHit(l.X, l.Y, l.DX, l.DY, pr.X, pr.Y, pirateHitRadius, bestT); ok {
-				bestT = t
-				hit = true
-				hitX = l.X + l.DX*t
-				hitY = l.Y + l.DY*t
-				pirateIdx = i
-				asteroidHit = nil
+			sin, cos := math.Sin(pr.Angle), math.Cos(pr.Angle)
+			for _, c := range pr.HullColliders() {
+				lx, ly := c[0], c[1]
+				wx := pr.X + (-sin*lx - cos*ly)
+				wy := pr.Y + (cos*lx - sin*ly)
+				if t, ok := raySphereHit(l.X, l.Y, l.DX, l.DY, wx, wy, c[2], bestT); ok {
+					bestT = t
+					hit = true
+					hitX = l.X + l.DX*t
+					hitY = l.Y + l.DY*t
+					pirateIdx = i
+					asteroidHit = nil
+				}
 			}
 		}
 	} else {
