@@ -371,48 +371,30 @@ func (s *Ship) drawAfterburners(dst *ebiten.Image, sx, sy float64, theme *ui.The
 	}
 }
 
-// DrawShieldOutline は搭載パーツ群の外周（隣接パーツのない面）をテーマライン色で描画する。
-// グリッドが隣接している面はスキップし、シルエットの輪郭だけが残る。
+// shieldExpand はシールド輪郭をベース船体外形より広げる倍率。
+const shieldExpand = 1.12
+
+// DrawShieldOutline はシールド展開中、ベース船体の外周を一回り大きく囲む輪郭線を描く。
+// 船体シルエットと相似のリングを theme.Line で 1 本足す形で「張られている」ことを示す。
 // シールド HP が 1 以上のときに毎フレーム呼び出す想定。
 func (s *Ship) DrawShieldOutline(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
-	if len(s.Parts) == 0 {
-		return
+	sin, cos := math.Sin(s.Angle), math.Cos(s.Angle)
+	// 船体描画と同じ R(angle + π/2) ローカル → ワールド変換。
+	toWorld := func(lx, ly float64) (float64, float64) {
+		return -sin*lx - cos*ly, cos*lx - sin*ly
 	}
-	g := float64(GridSize)
-	half := g / 2
-
-	occupied := make(map[[2]int]bool, len(s.Parts))
-	for _, p := range s.Parts {
-		occupied[[2]int{p.GX, p.GY}] = true
+	wHalf, hHalf := shipHullExtent(s.GridHalf(), float64(GridSize))
+	// ハル中心基準の外形ポリゴンを少し拡大して取る。ハル中心はピボットより
+	// partPivotShiftY だけ前方にあるので、ローカル y をその分補正してから回す。
+	pts := shipHullPolygon(0, 0, wHalf*shieldExpand, hHalf*shieldExpand)
+	n := len(pts)
+	scr := make([][2]float32, n)
+	for i, p := range pts {
+		wx, wy := toWorld(p[0], p[1]-partPivotShiftY)
+		scr[i] = [2]float32{float32(sx + wx), float32(sy + wy)}
 	}
-
-	// 船体描画と同じ R(angle + π/2) ローカル → ワールド変換
-	sSin, sCos := math.Sin(s.Angle), math.Cos(s.Angle)
-	rotate := func(lx, ly float64) (float32, float32) {
-		wx := -sSin*lx - sCos*ly
-		wy := sCos*lx - sSin*ly
-		return float32(sx + wx), float32(sy + wy)
-	}
-
-	type edge struct {
-		dx, dy         int
-		ax, ay, bx, by float64
-	}
-	for _, p := range s.Parts {
-		lx, ly := PartLocalCenter(p.GX, p.GY)
-		edges := [4]edge{
-			{0, -1, lx - half, ly - half, lx + half, ly - half}, // top
-			{1, 0, lx + half, ly - half, lx + half, ly + half},  // right
-			{0, 1, lx - half, ly + half, lx + half, ly + half},  // bottom
-			{-1, 0, lx - half, ly - half, lx - half, ly + half}, // left
-		}
-		for _, ed := range edges {
-			if occupied[[2]int{p.GX + ed.dx, p.GY + ed.dy}] {
-				continue
-			}
-			x1, y1 := rotate(ed.ax, ed.ay)
-			x2, y2 := rotate(ed.bx, ed.by)
-			vector.StrokeLine(dst, x1, y1, x2, y2, 1.5, theme.Line, false)
-		}
+	for i := 0; i < n; i++ {
+		j := (i + 1) % n
+		vector.StrokeLine(dst, scr[i][0], scr[i][1], scr[j][0], scr[j][1], 1.5, theme.Line, true)
 	}
 }
