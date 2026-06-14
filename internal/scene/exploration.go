@@ -662,26 +662,29 @@ func (e *Exploration) Update(d Director) error {
 func (e *Exploration) handlePlayerAsteroidCollisions() {
 	p := e.player
 	g := float64(entity.GridSize)
-	sumR := g // パーツ半径(g/2) + グリッド半径(g/2)
+	gridR := g / 2 // 小惑星グリッドの半径
 
-	// 自機パーツのワールド位置を一度算出（角度はループ中変わらず、位置はその場で加算）
+	// 自機ベース船体の衝突円（中心オフセット + 半径）をワールド向きで一度算出。
 	sSin, sCos := math.Sin(p.Angle), math.Cos(p.Angle)
-	type partOffset struct{ ox, oy float64 }
-	offsets := make([]partOffset, len(p.Parts))
-	for i, part := range p.Parts {
-		lx, ly := entity.PartLocalCenter(part.GX, part.GY)
+	type collider struct{ ox, oy, r float64 }
+	cols := p.HullColliders()
+	offsets := make([]collider, len(cols))
+	for i, c := range cols {
+		lx, ly := c[0], c[1]
 		// 船体描画と同じ R(angle + π/2) ローカル→ワールド変換
-		offsets[i] = partOffset{
+		offsets[i] = collider{
 			ox: -sSin*lx - sCos*ly,
 			oy: sCos*lx - sSin*ly,
+			r:  c[2],
 		}
 	}
 
 	for _, a := range e.asteroids {
 		aSin, aCos := math.Sin(a.Angle), math.Cos(a.Angle)
-		for i := range p.Parts {
+		for i := range offsets {
 			pcx := p.X + offsets[i].ox
 			pcy := p.Y + offsets[i].oy
+			sumR := offsets[i].r + gridR
 
 			for _, gr := range a.Grids {
 				lgx := float64(gr.GX) * g
@@ -746,17 +749,19 @@ func (e *Exploration) handlePlayerPirateCollisions() {
 	}
 	p := e.player
 	g := float64(entity.GridSize)
-	sumR := g // 双方のパーツ半径 (g/2) + (g/2)
+	prR := g / 2 // 海賊パーツの半径
 
-	// 自機パーツの船体ローカル → ワールド変換オフセット
+	// 自機ベース船体の衝突円（中心オフセット + 半径）を船体ローカル → ワールド変換
 	pSin, pCos := math.Sin(p.Angle), math.Cos(p.Angle)
-	type partOffset struct{ ox, oy float64 }
-	pOffsets := make([]partOffset, len(p.Parts))
-	for i, part := range p.Parts {
-		lx, ly := entity.PartLocalCenter(part.GX, part.GY)
-		pOffsets[i] = partOffset{
+	type collider struct{ ox, oy, r float64 }
+	cols := p.HullColliders()
+	pOffsets := make([]collider, len(cols))
+	for i, c := range cols {
+		lx, ly := c[0], c[1]
+		pOffsets[i] = collider{
 			ox: -pSin*lx - pCos*ly,
 			oy: pCos*lx - pSin*ly,
+			r:  c[2],
 		}
 	}
 
@@ -770,9 +775,10 @@ func (e *Exploration) handlePlayerPirateCollisions() {
 			prCX := pr.X + (-prSin*lx2 - prCos*ly2)
 			prCY := pr.Y + (prCos*lx2 - prSin*ly2)
 
-			for i := range p.Parts {
+			for i := range pOffsets {
 				pCX := p.X + pOffsets[i].ox
 				pCY := p.Y + pOffsets[i].oy
+				sumR := pOffsets[i].r + prR
 
 				dx := pCX - prCX
 				dy := pCY - prCY
@@ -1341,15 +1347,35 @@ func (e *Exploration) handlePlayerBulletsHitPirates() {
 }
 
 // handleHostileBulletsHitPlayer は敵弾とプレイヤー機体の円-点判定を行い、
-// 命中した弾を消費してダメージを与える。プレイヤーの円判定は GridSize（パーツ 1 個分）。
+// 命中した弾を消費してダメージを与える。判定はベース船体を近似する衝突円群で行う。
 func (e *Exploration) handleHostileBulletsHitPlayer() {
-	const playerHitRadius = float64(entity.GridSize)
+	p := e.player
+	pSin, pCos := math.Sin(p.Angle), math.Cos(p.Angle)
+	type collider struct{ wx, wy, r float64 }
+	cols := p.HullColliders()
+	hit := make([]collider, len(cols))
+	for i, c := range cols {
+		lx, ly := c[0], c[1]
+		hit[i] = collider{
+			wx: p.X + (-pSin*lx - pCos*ly),
+			wy: p.Y + (pCos*lx - pSin*ly),
+			r:  c[2],
+		}
+	}
+	insideHull := func(x, y float64) bool {
+		for _, c := range hit {
+			if math.Hypot(x-c.wx, y-c.wy) <= c.r {
+				return true
+			}
+		}
+		return false
+	}
 	for i := len(e.bullets) - 1; i >= 0; i-- {
 		b := &e.bullets[i]
 		if !b.Hostile {
 			continue
 		}
-		if math.Hypot(b.X-e.player.X, b.Y-e.player.Y) > playerHitRadius {
+		if !insideHull(b.X, b.Y) {
 			continue
 		}
 		e.playDamageSound()

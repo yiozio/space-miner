@@ -126,6 +126,26 @@ func (s *Ship) HullRadius() float64 {
 	return hHalf
 }
 
+// HullColliders はベース船体を近似する衝突円を、ピボット基準のローカル座標で返す
+// （各要素は {lx, ly, radius}）。当たり判定をベース船体の外形に合わせるために使う。
+// 中心線上に数個の円を並べ、各 y 位置でのハル半幅を半径とする（縦長のカプセル状近似）。
+func (s *Ship) HullColliders() [][3]float64 {
+	wHalf, hHalf := shipHullExtent(s.GridHalf(), float64(GridSize))
+	// t: ハル縦位置（-1=機首, +1=機尾）, wf: その位置のハル半幅 / wHalf
+	samples := [...]struct{ t, wf float64 }{
+		{-0.55, 0.50},
+		{0.12, 1.00},
+		{0.50, 0.80},
+		{0.85, 0.55},
+	}
+	out := make([][3]float64, len(samples))
+	for i, smp := range samples {
+		// ハル中心はピボットより partPivotShiftY だけ前方にあるので y を補正する。
+		out[i] = [3]float64{0, smp.t*hHalf - partPivotShiftY, smp.wf * wHalf}
+	}
+	return out
+}
+
 // TrailLightOffsets はベース船体の左右に尖った先端（光点の発生位置）の、
 // ピボットからのワールド座標オフセットを 2 つ返す（右先端, 左先端の順）。
 // 軌跡・光点を機体の向きに合わせて配置するために使う。
