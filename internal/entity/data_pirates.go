@@ -88,6 +88,7 @@ var piratePatterns = map[PiratePatternID]*PiratePattern{
 		Parts: []Part{
 			{DefID: PartIDGunMkII, GX: -1, GY: -1},
 			{DefID: PartIDGunMkII, GX: 1, GY: -1},
+			{DefID: PartIDDroneStd, GX: 0, GY: 0}, // 自機狙いドローンを設置
 			{DefID: PartIDArmorStd, GX: -1, GY: 0},
 			{DefID: PartIDArmorStd, GX: 1, GY: 0},
 			{DefID: PartIDThrusterHeavy, GX: 0, GY: 1},
@@ -101,7 +102,7 @@ var piratePatterns = map[PiratePatternID]*PiratePattern{
 		DropCreditsMin: 150,
 		DropCreditsMax: 280,
 		PartDropRate:   0.10,
-		PartDrops:      []PartID{PartIDGunMkII, PartIDThrusterHeavy, PartIDArmorStd, PartIDShieldStd},
+		PartDrops:      []PartID{PartIDGunMkII, PartIDThrusterHeavy, PartIDArmorStd, PartIDShieldStd, PartIDDroneStd},
 	},
 }
 

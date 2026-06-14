@@ -21,7 +21,10 @@ Accepted
   - 距離が `PreferredDist + 80` を超えれば追跡推進、近ければ慣性で滑る。
   - `MaxSpeed` でクランプ、軽いドラッグ (0.99) で暴走を抑制。
   - 距離 < `FireRange` かつ機首ずれ < 0.35 rad で発射。
-- `shoot()` は `([]Bullet, []LaserShot)` を返す（ADR 0007 と同じ規約）。
+- `Pirate.Update` は `([]Bullet, []LaserShot, []Drone)` を返す。`shoot()`（弾・レーザー）は
+  ADR 0007 と同じ規約。ドローンランチャー（`PartDroneLauncher`）搭載時は、ガン発射とは
+  独立した `droneTimer` に従い、`FireRange` 内で**自機を狙う** Hostile なドローンを設置する
+  （プレイヤー設置ドローンが小惑星/海賊を狙うのと対になる挙動）。
 - 描画は共通の `Ship.DrawAt`（ベース船体 + グリッドパーツ）に委譲し、`Ship.LineColor` で
   ライン色を赤 (`pirateLineColor=#ff6040`) に上書きする。画像キャッシュは元テーマのポインタで
   判定するため、色上書きが固定でもキャッシュは有効。敵識別は赤いライン色で行い、輪郭リングは描かない。

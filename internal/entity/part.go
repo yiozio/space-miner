@@ -24,6 +24,7 @@ const (
 	PartAutoAim
 	PartWarp
 	PartMineLayer
+	PartDroneLauncher
 )
 
 // Part はグリッド配置されたパーツ。
@@ -146,5 +147,14 @@ func drawPartRaw(dst *ebiten.Image, kind PartKind, x, y, cellSize float32, theme
 			dy := float32(math.Sin(ang))
 			vector.StrokeLine(dst, cx+dx*g*0.26, cy+dy*g*0.26, cx+dx*g*0.40, cy+dy*g*0.40, 1, line, false)
 		}
+	case PartDroneLauncher:
+		// 菱形のドローン本体と、左右に張り出した射出レール。
+		dr := g * 0.22
+		vector.StrokeLine(dst, cx, cy-dr, cx+dr, cy, 1, line, false)
+		vector.StrokeLine(dst, cx+dr, cy, cx, cy+dr, 1, line, false)
+		vector.StrokeLine(dst, cx, cy+dr, cx-dr, cy, 1, line, false)
+		vector.StrokeLine(dst, cx-dr, cy, cx, cy-dr, 1, line, false)
+		vector.StrokeLine(dst, x+inset, cy, cx-dr, cy, 1, line, false)
+		vector.StrokeLine(dst, cx+dr, cy, x+g-inset, cy, 1, line, false)
 	}
 }

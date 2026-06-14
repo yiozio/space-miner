@@ -32,6 +32,7 @@ const (
 	PartIDAutoAimStd
 	PartIDWarpStd
 	PartIDMineLayer
+	PartIDDroneStd
 )
 
 func init() {
@@ -211,5 +212,18 @@ func init() {
 		GunBulletWidth:  3,
 		GunBulletImpact: true,
 		GunFireSound:    FireSoundBurst,
+	})
+
+	// ドローンランチャー: 発射時に自律攻撃ドローンを設置する。
+	// ドローンは約10秒間、射程内で最も近い小惑星 or 海賊にビームで継続ダメージを与える。
+	// 射程・DPS は AutoAim 系ステータスを流用し、設置間隔は GunCooldown を使う。
+	registerPartDef(&PartDef{
+		ID: PartIDDroneStd, Kind: PartDroneLauncher,
+		Price:        350,
+		Weight:       4,
+		GunCooldown:  180, // 設置間隔 3 秒（寿命 10 秒なので複数同時稼働しうる）
+		AutoAimRange: 400,
+		AutoAimDPS:   6,
+		GunFireSound: FireSoundZap,
 	})
 }

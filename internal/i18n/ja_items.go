@@ -24,6 +24,7 @@ func newJAItems() ItemsStrings {
 			int(entity.PartIDAutoAimStd):    {Name: "オートエイム", Desc: "最後に弾の当たった小惑星をビームで自動攻撃する (DOT)。"},
 			int(entity.PartIDWarpStd):       {Name: "ワープドライブ", Desc: "ワープ機関。"},
 			int(entity.PartIDMineLayer):     {Name: "マインレイヤー", Desc: "発射時に機雷を設置する。機雷は約1秒後に6方向へ弾をばらまく。"},
+			int(entity.PartIDDroneStd):      {Name: "アタックドローン", Desc: "発射時に自律ドローンを設置する。約10秒間、最寄りの小惑星か敵をビームで攻撃する。"},
 		},
 		Resources: map[int]ItemText{
 			int(entity.ResourceIron):   {Name: "鉄"},

@@ -243,6 +243,7 @@ type ShopStrings struct {
 	AutoAimRangeFmt  string // "RANGE %.0f   DPS %.1f"
 	AutoAimNote      string // "BEAMS LAST-HIT ASTEROID"
 	MineLayerNote    string // "BURSTS 6 WAYS AFTER ~1s"
+	DroneNote        string // "ATTACKS NEAREST FOR ~10s"
 }
 
 // EditorStrings は機体エディタ。

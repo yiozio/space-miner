@@ -445,19 +445,20 @@ func (p *Player) Damage(amount int) {
 	}
 }
 
-// Shoot は各 Gun / MineLayer パーツを個別のクールダウンで発射する（パーツごとに独立）。
+// Shoot は各 Gun / MineLayer / DroneLauncher パーツを個別のクールダウンで発射する（パーツごとに独立）。
 // 弾は各 Gun の Rotation に従う向きで射出され、発射位置はパーツの前端中心。
-// MineLayer は向きに依らず機体（パーツ）位置へ機雷を設置する。
-// 戻り値: 通常弾 (Trail/Ball) と瞬間命中レーザー要求 (Laser スタイル)、設置する機雷、および
-// この発射で鳴らすべき発射音の種類（重複は除去）の 4 つ。
+// MineLayer / DroneLauncher は向きに依らず機体（パーツ）位置へ機雷／ドローンを設置する。
+// 戻り値: 通常弾 (Trail/Ball) と瞬間命中レーザー要求 (Laser スタイル)、設置する機雷、設置するドローン、
+// および この発射で鳴らすべき発射音の種類（重複は除去）の 5 つ。
 // クールダウン中のパーツは発射せず、全パーツが待機中なら全て nil。
-func (p *Player) Shoot() ([]Bullet, []LaserShot, []Mine, []GunFireSound) {
+func (p *Player) Shoot() ([]Bullet, []LaserShot, []Mine, []Drone, []GunFireSound) {
 	if p.gunFireTimers == nil {
 		p.gunFireTimers = map[[2]int]int{}
 	}
 	var bullets []Bullet
 	var lasers []LaserShot
 	var mines []Mine
+	var drones []Drone
 	var fireSounds []GunFireSound
 	seenSound := map[GunFireSound]bool{}
 	sin, cos := math.Sin(p.Angle), math.Cos(p.Angle)
@@ -466,9 +467,16 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot, []Mine, []GunFireSound) {
 	toWorld := func(lx, ly float64) (float64, float64) {
 		return -sin*lx - cos*ly, cos*lx - sin*ly
 	}
+	// addFireSound は発射音を重複なく登録する小ヘルパ。
+	addFireSound := func(s GunFireSound) {
+		if s != FireSoundNone && !seenSound[s] {
+			seenSound[s] = true
+			fireSounds = append(fireSounds, s)
+		}
+	}
 	for _, part := range p.Parts {
 		d := part.Def()
-		if d == nil || (d.Kind != PartGun && d.Kind != PartMineLayer) {
+		if d == nil || (d.Kind != PartGun && d.Kind != PartMineLayer && d.Kind != PartDroneLauncher) {
 			continue
 		}
 		// このパーツがクールダウン中なら発射しない。
@@ -492,10 +500,23 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot, []Mine, []GunFireSound) {
 				ImpactFX:    d.GunBulletImpact,
 			})
 			p.gunFireTimers[key] = d.GunCooldown
-			if s := d.GunFireSound; s != FireSoundNone && !seenSound[s] {
-				seenSound[s] = true
-				fireSounds = append(fireSounds, s)
-			}
+			addFireSound(d.GunFireSound)
+			continue
+		}
+
+		// ドローン射出も向きに依らずパーツ位置へドローンを設置する。
+		if d.Kind == PartDroneLauncher {
+			cxL, cyL := PartLocalCenter(part.GX, part.GY)
+			wox, woy := toWorld(cxL, cyL)
+			drones = append(drones, Drone{
+				X:     p.X + wox,
+				Y:     p.Y + woy,
+				Life:  droneLifeFrames,
+				Range: d.AutoAimRange,
+				DPS:   d.AutoAimDPS,
+			})
+			p.gunFireTimers[key] = d.GunCooldown
+			addFireSound(d.GunFireSound)
 			continue
 		}
 		// 発射方向（ローカル）。描画と同じ回転規約 (x,y)→(-y,x) で前方ベクトル
@@ -549,12 +570,9 @@ func (p *Player) Shoot() ([]Bullet, []LaserShot, []Mine, []GunFireSound) {
 		}
 		// このガンを自分の GunCooldown でクールダウンに入れる。
 		p.gunFireTimers[key] = d.GunCooldown
-		if s := d.GunFireSound; s != FireSoundNone && !seenSound[s] {
-			seenSound[s] = true
-			fireSounds = append(fireSounds, s)
-		}
+		addFireSound(d.GunFireSound)
 	}
-	return bullets, lasers, mines, fireSounds
+	return bullets, lasers, mines, drones, fireSounds
 }
 
 // AddSparePart はスペアパーツインベントリに id を qty 個加算する。

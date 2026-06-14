@@ -137,6 +137,7 @@ func newEN() *Strings {
 			AutoAimRangeFmt:  "RANGE %.0f   DPS %.1f",
 			AutoAimNote:      "BEAMS LAST-HIT ASTEROID",
 			MineLayerNote:    "BURSTS 6 WAYS AFTER ~1s",
+			DroneNote:        "ATTACKS NEAREST FOR ~10s",
 		},
 		Editor: EditorStrings{
 			Header:        "SHIP EDITOR",

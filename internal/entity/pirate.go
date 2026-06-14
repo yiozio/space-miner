@@ -21,10 +21,11 @@ var (
 // 敵識別のためライン色を pirateLineColor に上書きして描く（Ship.LineColor）。
 type Pirate struct {
 	Ship
-	HP        int
-	MaxHP     int
-	Pattern   *PiratePattern
-	fireTimer int
+	HP         int
+	MaxHP      int
+	Pattern    *PiratePattern
+	fireTimer  int
+	droneTimer int // ドローン設置のクールダウン（ガン発射とは独立）
 }
 
 // NewPirate は (x, y) に pattern に従う海賊機を生成する。最初は player 方向を向く。
@@ -46,10 +47,11 @@ func NewPirate(x, y float64, playerX, playerY float64, pattern *PiratePattern) *
 	}
 }
 
-// Update は 1 フレーム分 AI を進め、発射した弾とレーザー要求を返す。
+// Update は 1 フレーム分 AI を進め、発射した弾・レーザー要求・設置したドローンを返す。
 // 動作: プレイヤー方向に旋回し、PreferredDist に近づこうとする。
 // FireRange 内で機首がほぼ向いているとき発射する。
-func (p *Pirate) Update(playerX, playerY float64) ([]Bullet, []LaserShot) {
+// ドローンランチャー搭載時は、射程内で独立クールダウンに従い自機狙いのドローンを設置する。
+func (p *Pirate) Update(playerX, playerY float64) ([]Bullet, []LaserShot, []Drone) {
 	dx := playerX - p.X
 	dy := playerY - p.Y
 	dist := math.Hypot(dx, dy)
@@ -91,12 +93,57 @@ func (p *Pirate) Update(playerX, playerY float64) ([]Bullet, []LaserShot) {
 	if p.fireTimer > 0 {
 		p.fireTimer--
 	}
+	if p.droneTimer > 0 {
+		p.droneTimer--
+	}
+
+	// ドローン設置: 射程内かつ独立クールダウンが切れていれば、向きに依らず設置する。
+	var drones []Drone
+	if dist < p.Pattern.FireRange && p.droneTimer == 0 {
+		drones = p.deployDrones()
+	}
 
 	// 発射条件: 射程内 + 機首がほぼ合っている + クールダウンが切れている
 	if dist < p.Pattern.FireRange && math.Abs(da) < 0.35 && p.fireTimer == 0 {
-		return p.shoot()
+		bullets, lasers := p.shoot()
+		return bullets, lasers, drones
 	}
-	return nil, nil
+	return nil, nil, drones
+}
+
+// deployDrones は搭載するドローンランチャーから自機狙い（Hostile）のドローンを設置する。
+// 設置したら droneTimer を最も遅いランチャーのクールダウンに揃える。
+// ランチャー非搭載なら何もしない。
+func (p *Pirate) deployDrones() []Drone {
+	var drones []Drone
+	sin, cos := math.Sin(p.Angle), math.Cos(p.Angle)
+	toWorld := func(lx, ly float64) (float64, float64) {
+		return -sin*lx - cos*ly, cos*lx - sin*ly
+	}
+	maxCD := 0
+	for _, part := range p.Parts {
+		d := part.Def()
+		if d == nil || d.Kind != PartDroneLauncher {
+			continue
+		}
+		cxL, cyL := PartLocalCenter(part.GX, part.GY)
+		wox, woy := toWorld(cxL, cyL)
+		drones = append(drones, Drone{
+			X:       p.X + wox,
+			Y:       p.Y + woy,
+			Life:    droneLifeFrames,
+			Range:   d.AutoAimRange,
+			DPS:     d.AutoAimDPS,
+			Hostile: true,
+		})
+		if d.GunCooldown > maxCD {
+			maxCD = d.GunCooldown
+		}
+	}
+	if len(drones) > 0 {
+		p.droneTimer = maxCD
+	}
+	return drones
 }
 
 // shoot は装着 Gun から発射する。Hostile な弾とレーザー要求の 2 種を返す。

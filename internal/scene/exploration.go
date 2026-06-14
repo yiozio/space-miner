@@ -46,6 +46,8 @@ type Exploration struct {
 	asteroids  []*entity.Asteroid
 	bullets    []entity.Bullet
 	mines      []entity.Mine
+	drones     []entity.Drone
+	droneBeams []droneBeam // 当該フレームに発射中のドローン攻撃ビーム（描画用）
 	pickups    []entity.Pickup
 	stations   []*entity.Station
 	activeDock *entity.Station // 現在ドック範囲内のステーション。nil なら接岸不可
@@ -118,6 +120,13 @@ func (e *Exploration) Player() *entity.Player { return e.player }
 type autoAimBeam struct {
 	fromX, fromY float64
 	toX, toY     float64
+}
+
+// droneBeam はドローン → 対象のビーム描画情報。hostile で色を切り替える。
+type droneBeam struct {
+	fromX, fromY float64
+	toX, toY     float64
+	hostile      bool
 }
 
 // NewExploration は新規ゲーム用の探索シーンを生成する（Pebble 初期構成、playtime=0）。
@@ -228,6 +237,97 @@ func (e *Exploration) applyAutoAim() {
 			return
 		}
 		e.autoAimGridIdx = a.NearestGridIdx(e.player.X, e.player.Y)
+	}
+}
+
+// updateDrones は設置ドローンの寿命を進め、生存ドローンごとに最寄の対象へ攻撃させる。
+// 寿命切れのドローンは取り除く。描画用に droneBeams を毎フレーム書き換える。
+func (e *Exploration) updateDrones() {
+	e.droneBeams = e.droneBeams[:0]
+	nd := 0
+	for i := range e.drones {
+		d := &e.drones[i]
+		if d.Update() {
+			continue // 寿命切れで消滅
+		}
+		e.droneAttack(d)
+		e.drones[nd] = *d
+		nd++
+	}
+	e.drones = e.drones[:nd]
+}
+
+// droneAttack は 1 体のドローンの攻撃を 1 フレーム分処理する。
+// Hostile（敵機設置）なら自機を、そうでなければ射程内で最も近い小惑星 or 海賊を狙い、
+// DPS 分の継続ダメージを与える。攻撃したフレームはビーム描画情報を droneBeams に追加する。
+func (e *Exploration) droneAttack(d *entity.Drone) {
+	// 敵機が設置したドローンは自機を狙う。
+	if d.Hostile {
+		if math.Hypot(e.player.X-d.X, e.player.Y-d.Y) > d.Range {
+			return // 射程外
+		}
+		e.droneBeams = append(e.droneBeams, droneBeam{
+			fromX: d.X, fromY: d.Y, toX: e.player.X, toY: e.player.Y, hostile: true,
+		})
+		if dmg := d.TickDamage(); dmg > 0 {
+			e.playDamageSound()
+			e.player.Damage(dmg)
+		}
+		return
+	}
+
+	bestDist := d.Range
+	var targetAst *entity.Asteroid
+	targetGrid := -1
+	var targetPirate *entity.Pirate
+	var tx, ty float64
+
+	// 最寄の小惑星グリッド
+	for _, a := range e.asteroids {
+		idx := a.NearestGridIdx(d.X, d.Y)
+		if idx < 0 {
+			continue
+		}
+		gx, gy, ok := a.GridWorldPos(idx)
+		if !ok {
+			continue
+		}
+		if dist := math.Hypot(gx-d.X, gy-d.Y); dist < bestDist {
+			bestDist = dist
+			targetAst, targetGrid, tx, ty = a, idx, gx, gy
+			targetPirate = nil
+		}
+	}
+	// 最寄の海賊（小惑星より近ければ優先）
+	for _, pr := range e.pirates {
+		if pr.HP <= 0 {
+			continue
+		}
+		if dist := math.Hypot(pr.X-d.X, pr.Y-d.Y); dist < bestDist {
+			bestDist = dist
+			targetPirate, tx, ty = pr, pr.X, pr.Y
+			targetAst, targetGrid = nil, -1
+		}
+	}
+
+	if targetAst == nil && targetPirate == nil {
+		return // 射程内に対象なし
+	}
+	// ビーム描画情報（ダメージの有無に関わらず狙っている間は描く）
+	e.droneBeams = append(e.droneBeams, droneBeam{fromX: d.X, fromY: d.Y, toX: tx, toY: ty})
+
+	dmg := d.TickDamage()
+	if dmg <= 0 {
+		return
+	}
+	if targetPirate != nil {
+		targetPirate.TakeHit(dmg) // 撃破処理は cullPiratesAndDrop が担う
+		return
+	}
+	destroyed, pk, ok := targetAst.HitGrid(targetGrid, dmg)
+	if ok && destroyed {
+		e.pickups = append(e.pickups, pk)
+		sound.PlayAsteroidBreak()
 	}
 }
 
@@ -420,15 +520,18 @@ func (e *Exploration) Update(d Director) error {
 		a.Update()
 	}
 
-	// 海賊 AI: 各機が旋回・追跡・発射し、敵弾とレーザー要求を処理する
+	// 海賊 AI: 各機が旋回・追跡・発射し、敵弾・レーザー要求・設置ドローンを処理する
 	for _, pr := range e.pirates {
-		bullets, lasers := pr.Update(e.player.X, e.player.Y)
+		bullets, lasers, drones := pr.Update(e.player.X, e.player.Y)
 		pr.PushTrail()
 		if len(bullets) > 0 {
 			e.bullets = append(e.bullets, bullets...)
 		}
 		for _, l := range lasers {
 			e.fireLaser(l)
+		}
+		if len(drones) > 0 {
+			e.drones = append(e.drones, drones...)
 		}
 	}
 
@@ -481,12 +584,15 @@ func (e *Exploration) Update(d Director) error {
 
 	// 発射（押しっぱなしでクールダウン許可分だけ発射）
 	if ebiten.IsKeyPressed(ebiten.KeySpace) {
-		bullets, lasers, mines, fireSounds := e.player.Shoot()
+		bullets, lasers, mines, drones, fireSounds := e.player.Shoot()
 		if len(bullets) > 0 {
 			e.bullets = append(e.bullets, bullets...)
 		}
 		if len(mines) > 0 {
 			e.mines = append(e.mines, mines...)
+		}
+		if len(drones) > 0 {
+			e.drones = append(e.drones, drones...)
 		}
 		for _, l := range lasers {
 			e.fireLaser(l)
@@ -601,6 +707,9 @@ func (e *Exploration) Update(d Director) error {
 
 	// 敵弾 vs 自機
 	e.handleHostileBulletsHitPlayer()
+
+	// 設置ドローンの更新（最寄の小惑星 or 海賊へ継続ダメージ。寿命切れは消滅）
+	e.updateDrones()
 
 	// 撃破された海賊を除去し、credits とパーツを落とす（カル距離超過の海賊も除去）
 	e.cullPiratesAndDrop()
@@ -912,6 +1021,12 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		m.Draw(dst, m.X-e.cameraX+cx, m.Y-e.cameraY+cy, theme)
 	}
 
+	// 設置中のドローン
+	for i := range e.drones {
+		d := &e.drones[i]
+		d.Draw(dst, d.X-e.cameraX+cx, d.Y-e.cameraY+cy)
+	}
+
 	// 弾（カメラ＝プレイヤーが動くので、見かけのトレイル方向にプレイヤー速度を渡す）
 	for i := range e.bullets {
 		b := &e.bullets[i]
@@ -947,6 +1062,21 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		x2 := float32(b.toX - e.cameraX + cx)
 		y2 := float32(b.toY - e.cameraY + cy)
 		vector.StrokeLine(dst, x1, y1, x2, y2, 1.5, beamColor, false)
+	}
+
+	// ドローン攻撃ビーム（ドローン → 対象）。味方はシアン系、敵機設置は赤系で描き分ける。
+	droneBeamColor := color.NRGBA{0x40, 0xe0, 0xc0, 0xff}
+	droneHostileBeamColor := color.NRGBA{0xff, 0x60, 0x40, 0xff}
+	for _, b := range e.droneBeams {
+		x1 := float32(b.fromX - e.cameraX + cx)
+		y1 := float32(b.fromY - e.cameraY + cy)
+		x2 := float32(b.toX - e.cameraX + cx)
+		y2 := float32(b.toY - e.cameraY + cy)
+		c := droneBeamColor
+		if b.hostile {
+			c = droneHostileBeamColor
+		}
+		vector.StrokeLine(dst, x1, y1, x2, y2, 1.5, c, false)
 	}
 
 	// HP / シールドバーを船体下に描画（パーツに被らない位置）。
@@ -1079,7 +1209,7 @@ func (e *Exploration) buildControlsHelp() string {
 			case entity.ThrustDirRight:
 				hasRgt = true
 			}
-		case entity.PartGun, entity.PartMineLayer:
+		case entity.PartGun, entity.PartMineLayer, entity.PartDroneLauncher:
 			hasGun = true
 		}
 	}
@@ -1170,11 +1300,13 @@ func (e *Exploration) tickWarp() {
 			e.player.VY = 0
 			e.player.ClearTrail() // テレポートで軌跡が伸びないよう消す
 			e.lastMap = dest
-			// ワープ前の局所状態（小惑星・ピックアップ・弾・機雷・海賊・着弾・爆発・自動照準）は持ち越さない
+			// ワープ前の局所状態（小惑星・ピックアップ・弾・機雷・ドローン・海賊・着弾・爆発・自動照準）は持ち越さない
 			e.asteroids = e.asteroids[:0]
 			e.pickups = e.pickups[:0]
 			e.bullets = e.bullets[:0]
 			e.mines = e.mines[:0]
+			e.drones = e.drones[:0]
+			e.droneBeams = e.droneBeams[:0]
 			e.pirates = e.pirates[:0]
 			e.impacts = e.impacts[:0]
 			e.explosions = e.explosions[:0]

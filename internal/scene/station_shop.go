@@ -539,6 +539,11 @@ func partStatLines(d *entity.PartDef) []string {
 			fmt.Sprintf(sh.GunBulletSpdFmt, d.GunBulletSpeed),
 			sh.MineLayerNote,
 		}
+	case entity.PartDroneLauncher:
+		return []string{
+			fmt.Sprintf(sh.AutoAimRangeFmt, d.AutoAimRange, d.AutoAimDPS),
+			sh.DroneNote,
+		}
 	}
 	return nil
 }
