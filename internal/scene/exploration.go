@@ -865,6 +865,20 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		p.Draw(dst, p.X-e.cameraX+cx, p.Y-e.cameraY+cy)
 	}
 
+	// プレイヤー機本体。弾・ビーム・着弾/爆発・AutoAim ビームより先に描き、
+	// それらを不透明なベース船体の手前に出す。軌跡・光点は左右に尖ったハル先端から引く。
+	psx := e.player.X - e.cameraX + cx
+	psy := e.player.Y - e.cameraY + cy
+	e.player.DrawAt(dst, psx, psy, theme)
+	for _, off := range e.player.TrailLightOffsets() {
+		drawShipTrail(dst, e.player.Trail, -e.cameraX+cx+off[0], -e.cameraY+cy+off[1], theme.Line)
+		drawTrailLight(dst, psx+off[0], psy+off[1], theme.Line)
+	}
+	// シールドが 1 以上なら、外周（隣接面以外）を描画
+	if e.player.ShieldHP > 0 {
+		e.player.Ship.DrawShieldOutline(dst, psx, psy, theme)
+	}
+
 	// 弾（カメラ＝プレイヤーが動くので、見かけのトレイル方向にプレイヤー速度を渡す）
 	for i := range e.bullets {
 		b := &e.bullets[i]
@@ -902,17 +916,8 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		vector.StrokeLine(dst, x1, y1, x2, y2, 1.5, beamColor, false)
 	}
 
-	// プレイヤー（軌跡を船体の下に描く）
-	psx := e.player.X - e.cameraX + cx
-	psy := e.player.Y - e.cameraY + cy
-	drawShipTrail(dst, e.player.Trail, -e.cameraX+cx, -e.cameraY+cy, theme.Line)
-	e.player.DrawAt(dst, psx, psy, theme)
-	drawTrailLight(dst, psx, psy, theme.Line)
-	// シールドが 1 以上なら、外周（隣接面以外）を描画
-	if e.player.ShieldHP > 0 {
-		e.player.Ship.DrawShieldOutline(dst, psx, psy, theme)
-	}
-	// HP / シールドバーを船体下に描画（パーツに被らない位置）
+	// HP / シールドバーを船体下に描画（パーツに被らない位置）。
+	// 機体本体・軌跡・光点・シールドは弾より前のブロックで描画済み。
 	e.drawPlayerVitalBars(dst, theme, psx, psy)
 
 	// ドック近接プロンプト
@@ -1363,9 +1368,9 @@ func (e *Exploration) handleHostileBulletsHitPlayer() {
 // 機体の向きに依らずパーツと被らないようにする。
 // シールドは MaxShieldHP > 0 のとき、Fuel は MaxFuel > 0 のときのみ表示。
 func (e *Exploration) drawPlayerVitalBars(dst *ebiten.Image, theme *ui.Theme, psx, psy float64) {
-	// 船体半径: 各パーツのセル中心 + g/2 の最大距離
+	// 船体半径: 各パーツのセル中心 + g/2 の最大距離。ベース船体の外接半径も下限にする。
 	g := float64(entity.GridSize)
-	radius := g / 2
+	radius := e.player.HullRadius()
 	for _, part := range e.player.Parts {
 		dx, dy := entity.PartLocalCenter(part.GX, part.GY)
 		d := math.Hypot(dx, dy) + g/2

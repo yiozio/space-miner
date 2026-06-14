@@ -61,6 +61,7 @@ type Meta struct {
 // PlayerState は Player の永続化対象フィールド。
 // 派生ステータス（MaxHP / MaxFuel / MaxCargo 等）はパーツから再計算するため保存しない。
 type PlayerState struct {
+	BaseID             int                    `json:"base_id"`
 	Parts              []PartState            `json:"parts"`
 	X                  float64                `json:"x"`
 	Y                  float64                `json:"y"`
@@ -315,6 +316,7 @@ func makePlayerState(player *entity.Player) PlayerState {
 		}
 	}
 	return PlayerState{
+		BaseID:             int(player.BaseID),
 		Parts:              parts,
 		X:                  player.X,
 		Y:                  player.Y,
@@ -386,10 +388,11 @@ func restorePlayer(ps PlayerState) *entity.Player {
 	}
 	p := &entity.Player{
 		Ship: entity.Ship{
-			Parts: parts,
-			X:     ps.X,
-			Y:     ps.Y,
-			Angle: ps.Angle,
+			BaseID: entity.ShipBaseID(ps.BaseID),
+			Parts:  parts,
+			X:      ps.X,
+			Y:      ps.Y,
+			Angle:  ps.Angle,
 		},
 		Credits:            ps.Credits,
 		Inventory:          inv,

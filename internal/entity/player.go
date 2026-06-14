@@ -60,9 +60,9 @@ type Player struct {
 func NewPlayerPebble() *Player {
 	p := &Player{
 		Ship: Ship{
+			BaseID: ShipBasePebble, // 3x3 ベース。コックピット機能はベースが内包する。
 			Parts: []Part{
 				{DefID: PartIDGunStarter, GX: 0, GY: -1},
-				{DefID: PartIDCockpit, GX: 0, GY: 0},
 			},
 			// 起点 FullMap (Aurora) のステーション位置からスタートする
 			X:     DefaultStationX,
@@ -88,8 +88,9 @@ func NewPlayerPebble() *Player {
 // recomputeStats は搭載パーツから派生するステータス（MaxHP / MaxShieldHP / MaxFuel / MaxCargo）を再計算し、
 // 現在値を新しい上限にクランプする。
 // Armor 0 個 → 基本 HP のみ、Shield 0 個 → MaxShieldHP=0、Fuel 0 個 → MaxFuel=0。
-// MaxCargo は Cockpit と全 Cargo パーツの CargoCapacity を合算（Cockpit が最低限の積載量を提供する）。
+// 基本 HP・基本積載はベース（土台）が提供し、Armor / Cargo パーツがそれに上乗せする。
 func (p *Player) recomputeStats() {
+	base := ShipBaseDefByID(p.BaseID)
 	armor := 0
 	shield := 0
 	fuel := 0.0
@@ -107,13 +108,13 @@ func (p *Player) recomputeStats() {
 		case PartFuel:
 			fuel += d.FuelCapacity
 		}
-		// Cockpit と Cargo は Kind に関係なく CargoCapacity を加算する（他カテゴリは値が 0）
+		// Cargo パーツの CargoCapacity を加算（他カテゴリは値が 0）
 		cargo += d.CargoCapacity
 	}
-	p.MaxHP = PlayerHPDefault + armor
+	p.MaxHP = base.BaseHP + armor
 	p.MaxShieldHP = shield
 	p.MaxFuel = fuel
-	p.MaxCargo = cargo
+	p.MaxCargo = base.BaseCargo + cargo
 	if p.HP > p.MaxHP {
 		p.HP = p.MaxHP
 	}
@@ -215,35 +216,29 @@ type thrusterAgg struct {
 }
 
 // thrusterStatsByDir はスラスタ集計を方向別 (前/後/左/右) に返す。
-// Thruster が 1 つも無いときに限り Cockpit の最低限スラスタ性能を前向きに使う。
+// Thruster が 1 つも無いときに限り、ベースの非常用スラスタ性能を前向きに使う。
 func (p *Player) thrusterStatsByDir() (fwd, bck, lft, rgt thrusterAgg) {
-	var cockpit *PartDef
 	hasThruster := false
 	for _, part := range p.Parts {
 		d := part.Def()
-		if d == nil {
+		if d == nil || d.Kind != PartThruster {
 			continue
 		}
-		switch d.Kind {
-		case PartThruster:
-			hasThruster = true
-			switch part.ThrustDir() {
-			case ThrustDirForward:
-				accumulateThruster(&fwd, d)
-			case ThrustDirBackward:
-				accumulateThruster(&bck, d)
-			case ThrustDirLeft:
-				accumulateThruster(&lft, d)
-			case ThrustDirRight:
-				accumulateThruster(&rgt, d)
-			}
-		case PartCockpit:
-			cockpit = d
+		hasThruster = true
+		switch part.ThrustDir() {
+		case ThrustDirForward:
+			accumulateThruster(&fwd, d)
+		case ThrustDirBackward:
+			accumulateThruster(&bck, d)
+		case ThrustDirLeft:
+			accumulateThruster(&lft, d)
+		case ThrustDirRight:
+			accumulateThruster(&rgt, d)
 		}
 	}
-	if !hasThruster && cockpit != nil {
-		// 非常用 Cockpit 推進は前向きのみに与える
-		accumulateThruster(&fwd, cockpit)
+	if !hasThruster {
+		// 非常用ベース推進は前向きのみに与える
+		accumulateThruster(&fwd, ShipBaseDefByID(p.BaseID).EmergencyThrust())
 	}
 	return fwd, bck, lft, rgt
 }

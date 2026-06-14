@@ -34,7 +34,8 @@ const (
 // プレイヤー機・敵機（海賊船）の双方が共有する。
 type Ship struct {
 	Parts           []Part
-	X, Y            float64 // ワールド座標
+	BaseID          ShipBaseID // 機体ベース（土台）。グリッドサイズ・基礎ステータスを決める。海賊機では未使用。
+	X, Y            float64    // ワールド座標
 	VX, VY          float64
 	Angle           float64 // 機体の向き（ラジアン）。0 で +x（右）、CW 増加。
 	ThrustState     ThrustState
@@ -116,24 +117,58 @@ func (s *Ship) InvalidateImage() {
 	s.image = nil
 }
 
+// GridHalf は機体ベースの配置グリッド半径を返す（3x3 なら 1）。
+func (s *Ship) GridHalf() int { return ShipBaseDefByID(s.BaseID).GridHalf }
+
+// HullRadius はベース船体の下方向（尾）への外接半径を返す。バイタルバーの位置決めに使う。
+func (s *Ship) HullRadius() float64 {
+	_, hHalf := shipHullExtent(s.GridHalf(), float64(GridSize))
+	return hHalf
+}
+
+// TrailLightOffsets はベース船体の左右に尖った先端（光点の発生位置）の、
+// ピボットからのワールド座標オフセットを 2 つ返す（右先端, 左先端の順）。
+// 軌跡・光点を機体の向きに合わせて配置するために使う。
+func (s *Ship) TrailLightOffsets() [2][2]float64 {
+	sin, cos := math.Sin(s.Angle), math.Cos(s.Angle)
+	toWorld := func(lx, ly float64) (float64, float64) {
+		return -sin*lx - cos*ly, cos*lx - sin*ly
+	}
+	wHalf, hHalf := shipHullExtent(s.GridHalf(), float64(GridSize))
+	// ハル輪郭の左右中央（最も横に張り出した尖り）。ハル中心はピボットより
+	// partPivotShiftY だけ前方にあるので、その分 y を補正する。
+	ly := hHalf*0.12 - partPivotShiftY
+	rx, ry := toWorld(wHalf, ly)
+	lx, lyy := toWorld(-wHalf, ly)
+	return [2][2]float64{{rx, ry}, {lx, lyy}}
+}
+
 // ensureImage はテーマが変わっていれば船体画像を作り直す。
+// ベース船体を敷いた上に、固定グリッド（±GridHalf）のセルへパーツを重ねて 1 枚の画像にする。
 func (s *Ship) ensureImage(theme *ui.Theme) {
 	if s.cachedTheme == theme && s.image != nil {
 		return
 	}
-	minGX, minGY, maxGX, maxGY := s.bounds()
-	w := (maxGX - minGX + 1) * GridSize
-	h := (maxGY - minGY + 1) * GridSize
-	img := ebiten.NewImage(w, h)
+	gridHalf := s.GridHalf()
+	g := float64(GridSize)
+	_, hHalf := shipHullExtent(gridHalf, g)
+	// 画像はベース船体とグリッド全体（角セル含む）を収める正方形。
+	imgHalf := math.Ceil(math.Max(hHalf, (float64(gridHalf)+0.5)*g) + 6)
+	size := int(imgHalf * 2)
+	center := float64(size) / 2
+	img := ebiten.NewImage(size, size)
+	// ベース船体を先に敷き、その上にパーツを重ねる。
+	DrawShipBase(img, center, center, gridHalf, g, theme)
 	for _, p := range s.Parts {
-		x := float32((p.GX - minGX) * GridSize)
-		y := float32((p.GY - minGY) * GridSize)
-		DrawPart(img, p.Kind(), x, y, float32(GridSize), theme, p.Rotation)
+		x := center + float64(p.GX)*g - g/2
+		y := center + float64(p.GY)*g - g/2
+		DrawPart(img, p.Kind(), float32(x), float32(y), float32(GridSize), theme, p.Rotation)
 	}
 	s.image = img
-	// コックピット (GX=0, GY=0) 三角形の重心を回転中心とする（軌跡・光点もここに揃う）
-	s.imageOffsetX = float64(-minGX*GridSize) + float64(GridSize)/2
-	s.imageOffsetY = float64(-minGY*GridSize) + float64(GridSize)*cockpitPivotFracY
+	// ピボット（回転中心）は従来どおり原点セルのコックピット重心位置に保つ。
+	// これで PartLocalCenter・当たり判定・発射計算は変更不要。
+	s.imageOffsetX = center
+	s.imageOffsetY = center + partPivotShiftY
 	s.cachedTheme = theme
 }
 
@@ -165,11 +200,6 @@ func (s *Ship) bounds() (minGX, minGY, maxGX, maxGY int) {
 // ThrustState に応じて Thruster パーツの後方にアフターバーナーを重ねる。
 func (s *Ship) DrawAt(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
 	s.ensureImage(theme)
-	// アフターバーナーは船体の下に敷くと末端が船体線で隠れるので、先に描画して
-	// その上に船体画像を重ねる。
-	if s.ThrustState != ThrustOff {
-		s.drawAfterburners(dst, sx, sy, theme)
-	}
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(-s.imageOffsetX, -s.imageOffsetY)
 	// 画像はローカル -y を前方として描かれているので、Angle が 0（=+x）のとき
@@ -177,6 +207,10 @@ func (s *Ship) DrawAt(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
 	op.GeoM.Rotate(s.Angle + math.Pi/2)
 	op.GeoM.Translate(sx, sy)
 	dst.DrawImage(s.image, op)
+	// アフターバーナーは不透明なベース船体に隠れないよう、船体画像の手前に描く。
+	if s.ThrustState != ThrustOff {
+		s.drawAfterburners(dst, sx, sy, theme)
+	}
 }
 
 // thrustEmitters は推進炎を出すべきパーツ群を返す。
@@ -210,10 +244,13 @@ func (s *Ship) thrustEmitters() []Part {
 	if hasThruster {
 		return out
 	}
-	// 非常用 Cockpit 推進: 前進方向のみ
+	// 非常用推進: 前進方向のみ。
 	if s.ThrustActiveDir&ThrustActiveForward == 0 {
 		return nil
 	}
+	// 海賊機はコックピットパーツを非常用エミッタにする。
+	// プレイヤー機（コックピット非搭載）の非常推進炎は drawAfterburners が
+	// 船体後端から別途描く（ここでは何も返さない）。
 	for _, p := range s.Parts {
 		if p.Kind() == PartCockpit {
 			return []Part{p}
@@ -243,11 +280,53 @@ func (s *Ship) drawAfterburners(dst *ebiten.Image, sx, sy float64, theme *ui.The
 		lineWidth = 1
 	}
 	line := theme.Line
+	boost := s.ThrustState == ThrustBoost
 
 	// ローカル → ワールド変換: 画像と同じ R(angle + π/2)
 	// 結果は (lx, ly) → (-sin*lx - cos*ly, cos*lx - sin*ly)
 	toWorld := func(lx, ly float64) (float64, float64) {
 		return -sin*lx - cos*ly, cos*lx - sin*ly
+	}
+
+	// emitFlame は基点 (baseX, baseY)（スクリーン）から後方単位ベクトル (bx, by)・
+	// 接線単位ベクトル (tx, ty) の向きへ炎を 1 つ描く。
+	emitFlame := func(baseX, baseY, bx, by, tx, ty float64) {
+		jLen := length + (rand.Float64()*2-1)*jitter
+		if jLen < length*0.4 {
+			jLen = length * 0.4
+		}
+		tipX := baseX + bx*jLen
+		tipY := baseY + by*jLen
+		leftX := baseX + tx*halfWidth
+		leftY := baseY + ty*halfWidth
+		rightX := baseX - tx*halfWidth
+		rightY := baseY - ty*halfWidth
+
+		vector.StrokeLine(dst, float32(leftX), float32(leftY), float32(tipX), float32(tipY), lineWidth, line, false)
+		vector.StrokeLine(dst, float32(rightX), float32(rightY), float32(tipX), float32(tipY), lineWidth, line, false)
+
+		if boost {
+			// ブースト時はコア炎＋基底ラインを足して派手さを増す
+			coreLen := jLen * (0.45 + rand.Float64()*0.15)
+			coreTipX := baseX + bx*coreLen
+			coreTipY := baseY + by*coreLen
+			coreHalf := halfWidth * 0.5
+			cLeftX := baseX + tx*coreHalf
+			cLeftY := baseY + ty*coreHalf
+			cRightX := baseX - tx*coreHalf
+			cRightY := baseY - ty*coreHalf
+			vector.StrokeLine(dst, float32(cLeftX), float32(cLeftY), float32(coreTipX), float32(coreTipY), 1, line, false)
+			vector.StrokeLine(dst, float32(cRightX), float32(cRightY), float32(coreTipX), float32(coreTipY), 1, line, false)
+			vector.StrokeLine(dst, float32(leftX), float32(leftY), float32(rightX), float32(rightY), 1, line, false)
+		}
+	}
+
+	hasThruster := false
+	for _, p := range s.Parts {
+		if p.Kind() == PartThruster {
+			hasThruster = true
+			break
+		}
 	}
 
 	for _, p := range s.thrustEmitters() {
@@ -278,39 +357,17 @@ func (s *Ship) drawAfterburners(dst *ebiten.Image, sx, sy float64, theme *ui.The
 		bx, by := toWorld(rxL, ryL)
 		// 接線方向（炎幅）: (rxL, ryL) を CW 90° で (ryL, -rxL)
 		tx, ty := toWorld(ryL, -rxL)
+		emitFlame(sx+wox, sy+woy, bx, by, tx, ty)
+	}
 
-		baseX := sx + wox
-		baseY := sy + woy
-
-		jLen := length + (rand.Float64()*2-1)*jitter
-		if jLen < length*0.4 {
-			jLen = length * 0.4
-		}
-
-		tipX := baseX + bx*jLen
-		tipY := baseY + by*jLen
-		leftX := baseX + tx*halfWidth
-		leftY := baseY + ty*halfWidth
-		rightX := baseX - tx*halfWidth
-		rightY := baseY - ty*halfWidth
-
-		vector.StrokeLine(dst, float32(leftX), float32(leftY), float32(tipX), float32(tipY), lineWidth, line, false)
-		vector.StrokeLine(dst, float32(rightX), float32(rightY), float32(tipX), float32(tipY), lineWidth, line, false)
-
-		if s.ThrustState == ThrustBoost {
-			// ブースト時はコア炎＋基底ラインを足して派手さを増す
-			coreLen := jLen * (0.45 + rand.Float64()*0.15)
-			coreTipX := baseX + bx*coreLen
-			coreTipY := baseY + by*coreLen
-			coreHalf := halfWidth * 0.5
-			cLeftX := baseX + tx*coreHalf
-			cLeftY := baseY + ty*coreHalf
-			cRightX := baseX - tx*coreHalf
-			cRightY := baseY - ty*coreHalf
-			vector.StrokeLine(dst, float32(cLeftX), float32(cLeftY), float32(coreTipX), float32(coreTipY), 1, line, false)
-			vector.StrokeLine(dst, float32(cRightX), float32(cRightY), float32(coreTipX), float32(coreTipY), 1, line, false)
-			vector.StrokeLine(dst, float32(leftX), float32(leftY), float32(rightX), float32(rightY), 1, line, false)
-		}
+	// スラスタ未搭載で前進中は、ベースの非常推進炎を船体後端（ハル尾部）中央から出す。
+	// 原点から出すと船体に埋もれるため、ハル後端まで基点を下げる。
+	if !hasThruster && s.ThrustActiveDir&ThrustActiveForward != 0 {
+		_, hHalf := shipHullExtent(s.GridHalf(), g)
+		wox, woy := toWorld(0, hHalf*0.92) // ローカル +y がハル後端方向
+		bx, by := toWorld(0, 1)            // 後方単位ベクトル
+		tx, ty := toWorld(1, 0)            // 接線単位ベクトル
+		emitFlame(sx+wox, sy+woy, bx, by, tx, ty)
 	}
 }
 

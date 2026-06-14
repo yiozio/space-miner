@@ -15,8 +15,6 @@ import (
 )
 
 const (
-	editorGridHalf = 3                    // -3..+3
-	editorGridSize = editorGridHalf*2 + 1 // 7
 	editorCellSize = 50.0
 	editorCellGap  = 2.0
 
@@ -100,6 +98,12 @@ func (se *StationEditor) selectedDef() *entity.PartDef {
 	return se.palette[se.paletteIx]
 }
 
+// gridHalf は機体ベースの配置グリッド半径（3x3 なら 1）。
+func (se *StationEditor) gridHalf() int { return se.player.GridHalf() }
+
+// gridSize はグリッド一辺のセル数（3x3 なら 3）。
+func (se *StationEditor) gridSize() int { return se.gridHalf()*2 + 1 }
+
 func (se *StationEditor) Update(d Director) error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		sound.PlayMenuCancel()
@@ -110,23 +114,24 @@ func (se *StationEditor) Update(d Director) error {
 	oldGX, oldGY, oldPal := se.cursorGX, se.cursorGY, se.paletteIx
 
 	// カーソル移動
+	half := se.gridHalf()
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
-		if se.cursorGY > -editorGridHalf {
+		if se.cursorGY > -half {
 			se.cursorGY--
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
-		if se.cursorGY < editorGridHalf {
+		if se.cursorGY < half {
 			se.cursorGY++
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
-		if se.cursorGX > -editorGridHalf {
+		if se.cursorGX > -half {
 			se.cursorGX--
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
-		if se.cursorGX < editorGridHalf {
+		if se.cursorGX < half {
 			se.cursorGX++
 		}
 	}
@@ -150,9 +155,9 @@ func (se *StationEditor) Update(d Director) error {
 		se.marqueeTick++
 	}
 
-	// 回転: R キーでカーソル上の配置済みパーツを 90° 回転（コックピットは除く）
+	// 回転: R キーでカーソル上の配置済みパーツを 90° 回転
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
-		if i := se.partAtCursor(); i >= 0 && se.player.Parts[i].Kind() != entity.PartCockpit {
+		if i := se.partAtCursor(); i >= 0 {
 			se.player.Parts[i].Rotation = (se.player.Parts[i].Rotation + 1) % 4
 			se.player.OnPartsChanged()
 		}
@@ -209,16 +214,13 @@ func (se *StationEditor) tryPlace() bool {
 }
 
 // tryRemove はカーソル位置のパーツを取り外し、PartsInventory に戻す。
-// コックピットは取り外せない。取り外しに成功したら true を返す。
+// 取り外しに成功したら true を返す。
 func (se *StationEditor) tryRemove() bool {
 	i := se.partAtCursor()
 	if i < 0 {
 		return false
 	}
 	p := se.player.Parts[i]
-	if p.Kind() == entity.PartCockpit {
-		return false
-	}
 	se.player.Parts = append(se.player.Parts[:i], se.player.Parts[i+1:]...)
 	se.player.PartsInventory[p.DefID]++
 	se.player.OnPartsChanged()
@@ -239,7 +241,7 @@ func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
 	// レイアウト: ショップと同様にヘッダー直下へ整備士画像を大きく表示し、
 	// その下へ画像と同じ横幅で「性能 | グリッド | パーツ」の3カラムを収める。
 	// グリッドは画面中央、左右カラムの外端は画像の端に揃える。
-	gridPx := float64(editorGridSize)*editorCellSize + float64(editorGridSize-1)*editorCellGap
+	gridPx := float64(se.gridSize())*editorCellSize + float64(se.gridSize()-1)*editorCellGap
 	gap := 24.0
 	gridStartX := (float64(sw) - gridPx) / 2
 	statsX := (float64(sw) - stationPortraitW) / 2
@@ -262,33 +264,33 @@ func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
 }
 
 // gridCellPos はグリッド (gx, gy) の左上スクリーン座標を返す。
-func gridCellPos(originX, originY float64, gx, gy int) (float64, float64) {
-	col := gx + editorGridHalf
-	row := gy + editorGridHalf
+func gridCellPos(originX, originY float64, gx, gy, gridHalf int) (float64, float64) {
+	col := gx + gridHalf
+	row := gy + gridHalf
 	return originX + float64(col)*(editorCellSize+editorCellGap),
 		originY + float64(row)*(editorCellSize+editorCellGap)
 }
 
 func (se *StationEditor) drawShipGrid(dst *ebiten.Image, theme *ui.Theme, x, y float64) {
 	cs := float64(editorCellSize)
+	half := se.gridHalf()
+	gridPx := float64(se.gridSize())*editorCellSize + float64(se.gridSize()-1)*editorCellGap
+	// グリッド背面にベース船体を描く（中心 = グリッド中心 = 原点セル中心）
+	entity.DrawShipBase(dst, x+gridPx/2, y+gridPx/2, half, cs, theme)
 	// 背景セル
-	for gy := -editorGridHalf; gy <= editorGridHalf; gy++ {
-		for gx := -editorGridHalf; gx <= editorGridHalf; gx++ {
-			cx, cy := gridCellPos(x, y, gx, gy)
+	for gy := -half; gy <= half; gy++ {
+		for gx := -half; gx <= half; gx++ {
+			cx, cy := gridCellPos(x, y, gx, gy, half)
 			vector.StrokeRect(dst, float32(cx), float32(cy), float32(cs), float32(cs), 1, theme.LineDim, false)
-			if gx == 0 && gy == 0 {
-				// 原点（コックピット位置）を薄く強調
-				vector.StrokeRect(dst, float32(cx+2), float32(cy+2), float32(cs-4), float32(cs-4), 1, theme.Line, false)
-			}
 		}
 	}
 	// 配置済みパーツ
 	for _, part := range se.player.Parts {
-		cx, cy := gridCellPos(x, y, part.GX, part.GY)
+		cx, cy := gridCellPos(x, y, part.GX, part.GY, half)
 		entity.DrawPart(dst, part.Kind(), float32(cx), float32(cy), float32(cs), theme, part.Rotation)
 	}
 	// カーソル
-	cx, cy := gridCellPos(x, y, se.cursorGX, se.cursorGY)
+	cx, cy := gridCellPos(x, y, se.cursorGX, se.cursorGY, half)
 	vector.StrokeRect(dst, float32(cx-2), float32(cy-2), float32(cs+4), float32(cs+4), 2, theme.Line, false)
 }
 
