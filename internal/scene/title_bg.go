@@ -7,6 +7,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	assetimage "github.com/yiozio/space-miner/internal/asset/image"
 	"github.com/yiozio/space-miner/internal/entity"
 	"github.com/yiozio/space-miner/internal/ui"
 )
@@ -39,6 +40,7 @@ type titleBackground struct {
 	asteroids   []*entity.Asteroid
 	pirate      *entity.Pirate // nil なら不在
 	pirateTimer int            // 次の海賊出現までの残フレーム
+	t           float64        // 経過秒（惑星の自転・雲アニメ用）
 }
 
 func newTitleBackground() *titleBackground {
@@ -71,6 +73,7 @@ func (bg *titleBackground) newAsteroid() *entity.Asteroid {
 }
 
 func (bg *titleBackground) update() {
+	bg.t += 1.0 / 60.0 // 惑星の自転・雲アニメを進める
 	for _, a := range bg.asteroids {
 		a.Update()
 		titleWrap(&a.X, &a.Y)
@@ -114,7 +117,14 @@ func (bg *titleBackground) spawnPirate() {
 
 func (bg *titleBackground) draw(dst *ebiten.Image, theme *ui.Theme) {
 	bg.starfield.draw(dst, 0, 0, theme)
-	drawTitlePlanet(dst, titlePlanetX, titlePlanetY, titlePlanetR, titlePlanetColor)
+	// 惑星は本編と同じ Aurora の自転テクスチャ球（端ほど濃い青白の大気つき）で描く。
+	// アセット未準備のときだけ従来の青い惑星でつなぐ（通常はスプラッシュ中に準備完了）。
+	tex := assetimage.Planet3rdFrameAt(bg.t * planetCloudSpeed)
+	spin := math.Mod(bg.t*planetSpinTurnsPerSec, 1.0)
+	atmo := planetAtmosphere{strength: 0.8, color: [3]float32{0.6, 0.8, 1.0}, outer: 1.07}
+	if !drawPlanetSphere(dst, tex, titlePlanetX, titlePlanetY, titlePlanetR, spin, atmo) {
+		drawTitlePlanet(dst, titlePlanetX, titlePlanetY, titlePlanetR, titlePlanetColor)
+	}
 	for _, a := range bg.asteroids {
 		a.Draw(dst, a.X, a.Y)
 	}

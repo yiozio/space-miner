@@ -27,7 +27,7 @@ func New() *Game {
 		theme:       ui.ThemeByName(prefs.ThemeName),
 		preferences: prefs,
 	}
-	g.Push(scene.NewTitle())
+	g.Push(scene.NewSplash()) // 起動直後はスプラッシュ → 0.7秒後にタイトルへ
 	return g
 }
 

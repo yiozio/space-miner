@@ -101,6 +101,7 @@ type TitleStrings struct {
 	Setting  string
 	Quit     string
 	Hint     string // フッタの操作ヒント
+	Loading  string // アセット読み込み中の表示（メニュー準備前）
 }
 
 // MenuStrings はゲーム中のポーズメニュー。

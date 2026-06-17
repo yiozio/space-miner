@@ -21,6 +21,7 @@ func newJA() *Strings {
 			Setting:  "設定",
 			Quit:     "終了",
 			Hint:     "[ ↑↓: 移動    Enter: 決定 ]",
+			Loading:  "読み込み中...",
 		},
 		Menu: MenuStrings{
 			Header:      "メニュー",

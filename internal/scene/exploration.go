@@ -140,6 +140,9 @@ func NewExploration() *Exploration {
 // 小惑星はゾーン定義に従って実行時に逐次スポーンされるため、開始時には生成しない。
 func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 	sound.StopBGM() // タイトル BGM を止めてゲーム本編へ
+	// 惑星テクスチャ（GIF アニメ）の展開をバックグラウンドで先行開始する。
+	// 初回描画までに間に合わなければ平面描画にフォールバックし、準備でき次第ぬるっと差し替わる。
+	assetimage.PreloadPlanet()
 	e := &Exploration{
 		player:         p,
 		starfield:      newStarfield(1),
@@ -1401,7 +1404,8 @@ func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
 	if sx+r < 0 || sx-r > float32(sw) || sy+r < 0 || sy-r > float32(sh) {
 		return
 	}
-	// 惑星はテクスチャを貼った自転する立体球として描く（シェーダ）。失敗時は平面描画へ続行。
+	// 惑星はテクスチャを貼った自転する立体球として描く（シェーダ）。
+	// アセット未準備でも平面描画にはフォールバックしない（タイトルで展開完了を待つ前提）。
 	if body.Kind == entity.CelestialPlanet {
 		// 自転位相は 1 周で正規化（長時間プレイでも float32 精度を保つ）。
 		spin := math.Mod(playtime*planetSpinTurnsPerSec, 1.0)
@@ -1412,11 +1416,10 @@ func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
 		if body.Name == "Aurora" {
 			atmo = planetAtmosphere{strength: 0.8, color: [3]float32{0.6, 0.8, 1.0}, outer: 1.07}
 		}
-		if drawPlanetSphere(dst, tex, float64(sx), float64(sy), float64(r), spin, atmo) {
-			return
-		}
+		drawPlanetSphere(dst, tex, float64(sx), float64(sy), float64(r), spin, atmo)
+		return
 	}
-	// 暗側ベース（不透明）。ここが影の側として残る。
+	// 以降は衛星・恒星などの平面描画。暗側ベース（不透明）が影の側として残る。
 	dark := scaleColor(body.Color, 0.9)
 	dark.A = 255
 	vector.FillCircle(dst, sx, sy, r, dark, true)

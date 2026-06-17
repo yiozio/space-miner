@@ -19,6 +19,7 @@ func newEN() *Strings {
 			Setting:  "Setting",
 			Quit:     "Quit Game",
 			Hint:     "[ Up/Down: Move    Enter: Select ]",
+			Loading:  "Loading...",
 		},
 		Menu: MenuStrings{
 			Header:      "MENU",

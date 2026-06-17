@@ -12,6 +12,7 @@ import (
 	_ "image/png"
 	"math"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -45,67 +46,80 @@ var (
 	shipBase *ebiten.Image
 	parts    *ebiten.Image
 
-	planetAnimOnce sync.Once
-	planetAnim     *planetAnimData
+	// 惑星アニメ: 重い GIF デコード・合成・縮小はバックグラウンドで CPU 展開し（planetRGBA）、
+	// ebiten 画像化（GPU アップロード）はゲームスレッドが必要なフレームだけ遅延実行する。
+	// これで初回表示時のまとめ展開によるカクつきを避ける。
+	planetLoadOnce sync.Once
+	planetReady    atomic.Bool      // 背景展開が完了したら true（以降スライスは読み取り専用）
+	planetRGBA     []*stdimage.RGBA // 背景goroutineが用意した各フレーム（アップロード後 nil）
+	planetEbiten   []*ebiten.Image  // ゲームスレッドが遅延生成したフレーム
+	planetCum      []float64        // 各フレーム終了時刻の累積秒
+	planetTotal    float64          // 1ループ秒
 )
-
-// planetAnimData は 3rd_planet.gif を展開した惑星アニメーション（正距円筒テクスチャの連番）。
-// frames は各フレーム（2x 縮小済み）、cum は各フレーム終了時刻の累積秒、total は1ループ秒。
-type planetAnimData struct {
-	frames []*ebiten.Image
-	cum    []float64
-	total  float64
-}
 
 // planetTexMaxW は惑星テクスチャの目標最大幅（px）。これを超えるソースは 2x 縮小を繰り返す。
 const planetTexMaxW = 800
 
-// loadPlanetAnim は GIF を初回のみ展開する。任意のフレーム数・サイズ・disposal に対応する。
-// 各フレームを直前の合成結果へ重ね（GIF の disposal 規約を反映）、幅が大きい場合は
-// planetTexMaxW 以下まで 2x ボックス縮小して ebiten 画像にする。
-func loadPlanetAnim() *planetAnimData {
-	planetAnimOnce.Do(func() {
-		g, err := gif.DecodeAll(bytes.NewReader(planet3rdGIF))
-		if err != nil {
-			panic("asset/image: 3rd_planet.gif のデコードに失敗: " + err.Error())
-		}
-		canvas := stdimage.NewRGBA(stdimage.Rect(0, 0, g.Config.Width, g.Config.Height))
-		var prev *stdimage.RGBA // disposal=Previous 用の直前スナップショット
-		a := &planetAnimData{}
-		t := 0.0
-		for i, fr := range g.Image {
-			disposal := byte(gif.DisposalNone)
-			if i < len(g.Disposal) {
-				disposal = g.Disposal[i]
+// PreloadPlanet は惑星アニメの展開をバックグラウンドで開始する（初回表示のカクつき防止）。
+// 重い GIF デコード・合成・縮小（CPU）を別ゴルーチンで行い、完了したら planetReady を立てる。
+// ebiten 画像化（GPU アップロード）はゲームスレッドが Planet3rdFrameAt で遅延・分散実行する。
+// 任意のフレーム数・サイズ・disposal に対応。失敗時は ready のままにして平面描画へフォールバック。
+func PreloadPlanet() {
+	planetLoadOnce.Do(func() {
+		go func() {
+			g, err := gif.DecodeAll(bytes.NewReader(planet3rdGIF))
+			if err != nil {
+				return
 			}
-			if disposal == gif.DisposalPrevious {
-				prev = cloneRGBA(canvas)
-			}
-			// 直前の合成結果に重ねる（変更画素のみ／部分フレームでも正しく繋がる）。
-			draw.Draw(canvas, fr.Bounds(), fr, fr.Bounds().Min, draw.Over)
-			// NewImageFromImage は画素をコピーするので、以降 canvas を書き換えても影響しない。
-			a.frames = append(a.frames, ebiten.NewImageFromImage(shrinkToWidth(canvas, planetTexMaxW)))
-			d := float64(g.Delay[i]) / 100.0
-			if d <= 0 {
-				d = 0.1
-			}
-			t += d
-			a.cum = append(a.cum, t)
-			// 次フレームへ向けた disposal 処理。
-			switch disposal {
-			case gif.DisposalBackground:
-				clearRect(canvas, fr.Bounds())
-			case gif.DisposalPrevious:
-				if prev != nil {
-					copy(canvas.Pix, prev.Pix)
+			canvas := stdimage.NewRGBA(stdimage.Rect(0, 0, g.Config.Width, g.Config.Height))
+			var prev *stdimage.RGBA // disposal=Previous 用の直前スナップショット
+			var frames []*stdimage.RGBA
+			var cum []float64
+			t := 0.0
+			for i, fr := range g.Image {
+				disposal := byte(gif.DisposalNone)
+				if i < len(g.Disposal) {
+					disposal = g.Disposal[i]
+				}
+				if disposal == gif.DisposalPrevious {
+					prev = cloneRGBA(canvas)
+				}
+				// 直前の合成結果に重ねる（変更画素のみ／部分フレームでも正しく繋がる）。
+				draw.Draw(canvas, fr.Bounds(), fr, fr.Bounds().Min, draw.Over)
+				// 次フレームで canvas を書き換えるため、各フレームは独立スナップショットにする。
+				fimg := shrinkToWidth(canvas, planetTexMaxW)
+				if fimg == canvas {
+					fimg = cloneRGBA(fimg)
+				}
+				frames = append(frames, fimg)
+				d := float64(g.Delay[i]) / 100.0
+				if d <= 0 {
+					d = 0.1
+				}
+				t += d
+				cum = append(cum, t)
+				// 次フレームへ向けた disposal 処理。
+				switch disposal {
+				case gif.DisposalBackground:
+					clearRect(canvas, fr.Bounds())
+				case gif.DisposalPrevious:
+					if prev != nil {
+						copy(canvas.Pix, prev.Pix)
+					}
 				}
 			}
-		}
-		a.total = t
-		planetAnim = a
+			planetRGBA = frames
+			planetEbiten = make([]*ebiten.Image, len(frames))
+			planetCum = cum
+			planetTotal = t
+			planetReady.Store(true) // 公開はここで（以降スライスは読み取り専用）
+		}()
 	})
-	return planetAnim
 }
+
+// PlanetReady は惑星アニメの背景展開（CPU デコード・合成・縮小）が完了したかを返す。
+// 残りの GPU アップロードはフレーム表示時に分散実行されるため、ここが true なら以降カクつかない。
+func PlanetReady() bool { return planetReady.Load() }
 
 // shrinkToWidth は幅が maxW を超える間 2x 縮小を繰り返す。縮小不要なら src をそのまま返す
 // （呼び出し側の NewImageFromImage が画素をコピーするため共有で問題ない）。
@@ -162,22 +176,31 @@ func downscale2x(src *stdimage.RGBA) *stdimage.RGBA {
 }
 
 // Planet3rdFrameAt は時刻 t（秒）に対応する惑星アニメフレームを返す（ループ）。
-// フレームが無ければ nil。
+// バックグラウンド展開がまだなら（または失敗時は）nil を返し、呼び出し側は平面描画へフォールバックする。
+// 該当フレームの ebiten 画像が未生成なら、その場で 1 枚だけ生成（GPU アップロード）してキャッシュする。
+// アニメ再生で必要になったフレームだけ順次アップロードされるため、初回のまとめ展開が起きない。
+// ゲームスレッド（Draw）からのみ呼ぶ想定。
 func Planet3rdFrameAt(t float64) *ebiten.Image {
-	a := loadPlanetAnim()
-	if a.total <= 0 || len(a.frames) == 0 {
+	PreloadPlanet()
+	if !planetReady.Load() || planetTotal <= 0 || len(planetEbiten) == 0 {
 		return nil
 	}
-	tt := math.Mod(t, a.total)
+	tt := math.Mod(t, planetTotal)
 	if tt < 0 {
-		tt += a.total
+		tt += planetTotal
 	}
-	for i, c := range a.cum {
+	idx := len(planetEbiten) - 1
+	for i, c := range planetCum {
 		if tt < c {
-			return a.frames[i]
+			idx = i
+			break
 		}
 	}
-	return a.frames[len(a.frames)-1]
+	if planetEbiten[idx] == nil {
+		planetEbiten[idx] = ebiten.NewImageFromImage(planetRGBA[idx])
+		planetRGBA[idx] = nil // アップロード後は CPU 側を解放
+	}
+	return planetEbiten[idx]
 }
 
 // load は初回アクセス時に PNG をデコードして ebiten 画像にする（描画スレッドから呼ばれる想定）。

@@ -6,6 +6,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	assetimage "github.com/yiozio/space-miner/internal/asset/image"
 	"github.com/yiozio/space-miner/internal/asset/logo"
 	"github.com/yiozio/space-miner/internal/asset/sound"
 	"github.com/yiozio/space-miner/internal/dialog"
@@ -51,6 +52,9 @@ func NewTitle() *Title {
 	}
 	tl.applyLabels()
 	sound.PlayTitleBGM() // タイトルの宇宙環境音（ゲーム開始時に StopBGM で停止）
+	// オープニング表示中に惑星 GIF の展開をバックグラウンドで進める。
+	// 完了するまでメニューは出さない（その間にゲーム本編へ入らせない）。
+	assetimage.PreloadPlanet()
 	return tl
 }
 
@@ -70,6 +74,10 @@ func (t *Title) Update(d Director) error {
 	t.applyLabels()
 	sound.TickTitleBGM()
 	t.bg.update()
+	// 惑星アセットの展開が終わるまではメニューを操作させない（非表示）。
+	if !assetimage.PlanetReady() {
+		return nil
+	}
 	r := t.menu.Update()
 	if !r.Activated {
 		return nil
@@ -125,12 +133,18 @@ func (t *Title) Draw(dst *ebiten.Image, d Director) {
 	drawTitleShipEmblem(dst, float64(sw)/2-12, logoY+90, theme)
 
 	menuScale := 2.0
-	maxW := t.menu.MaxLabelWidth(menuScale)
-	mx := (float64(sw) - maxW) / 2
 	my := logoY + logoH + 60
-	t.menu.Draw(dst, theme, mx, my, menuScale)
-
-	ui.DrawText(dst, s.Hint, 20, float64(sh)-30, 1.5, theme.LineDim)
+	if assetimage.PlanetReady() {
+		// メニュー表示（アセット準備完了後）。
+		maxW := t.menu.MaxLabelWidth(menuScale)
+		mx := (float64(sw) - maxW) / 2
+		t.menu.Draw(dst, theme, mx, my, menuScale)
+		ui.DrawText(dst, s.Hint, 20, float64(sh)-30, 1.5, theme.LineDim)
+	} else {
+		// 準備中はメニューの代わりに読み込み表示。
+		lw2, _ := ui.MeasureText(s.Loading, menuScale)
+		ui.DrawText(dst, s.Loading, (float64(sw)-lw2)/2, my, menuScale, theme.LineDim)
+	}
 }
 
 // drawTitleShipEmblem は (cx, bottomY) を底辺中央として、自機コックピット三角形
