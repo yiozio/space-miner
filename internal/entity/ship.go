@@ -3,10 +3,11 @@ package entity
 import (
 	"image/color"
 	"math"
-	"math/rand"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+
+	assetimage "github.com/yiozio/space-miner/internal/asset/image"
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
@@ -47,7 +48,13 @@ type Ship struct {
 
 	// LineColor はライン描画色の上書き。ゼロ値（A==0）なら theme.Line を使う。
 	// 海賊機など、テーマと別色で機体を描き分けるために設定する。
+	// スプライト描画では色乗算（ColorScale）として機体全体に適用する。
 	LineColor color.NRGBA
+
+	// 推進炎アニメーション状態（TickThrustAnim が毎フレーム更新）。
+	AnimTick      int             // 炎フレーム送り用の汎用カウンタ
+	lastActiveDir ThrustActiveDir // 直近で炎を出していた方向（消火フレーム表示に使う）
+	flameOffTimer int             // >0 の間、消火フレーム（炎消）を表示する残フレーム
 
 	// 描画キャッシュ。テーマ変更時に再生成する。
 	cachedTheme  *ui.Theme
@@ -174,33 +181,36 @@ func (s *Ship) ensureImage(theme *ui.Theme) {
 	if s.cachedTheme == theme && s.image != nil {
 		return
 	}
-	// LineColor が指定されていれば、その色でラインを描くテーマ複製を使う
-	// （海賊機などの色分け）。キャッシュ判定は元テーマのポインタで行うため、
-	// 色上書きが固定であればキャッシュはそのまま有効。
-	drawTheme := theme
-	if s.LineColor.A != 0 {
-		tc := *theme
-		tc.Line = s.LineColor
-		drawTheme = &tc
-	}
 	gridHalf := s.GridHalf()
 	g := float64(GridSize)
-	_, hHalf := shipHullExtent(gridHalf, g)
-	// 画像はベース船体とグリッド全体（角セル含む）を収める正方形。
-	imgHalf := math.Ceil(math.Max(hHalf, (float64(gridHalf)+0.5)*g) + 6)
+	// 画像はベース船体スプライト（回転を含む）を余裕をもって収める正方形。
+	// グリッド中心からスプライト四隅までの最大距離 = 回転に耐える半径。
+	bw, bh := assetimage.ShipBaseSize()
+	scale := g / float64(assetimage.CellSize)
+	span := float64(2*gridHalf+1) * float64(assetimage.CellSize)
+	gcx := float64(assetimage.ShipBaseGridX) + span/2
+	gcy := float64(assetimage.ShipBaseGridY) + span/2
+	maxd := 0.0
+	for _, c := range [4][2]float64{{0, 0}, {float64(bw), 0}, {0, float64(bh)}, {float64(bw), float64(bh)}} {
+		if d := math.Hypot(c[0]-gcx, c[1]-gcy); d > maxd {
+			maxd = d
+		}
+	}
+	imgHalf := math.Ceil(math.Max(maxd*scale, (float64(gridHalf)+0.5)*g) + 4)
 	size := int(imgHalf * 2)
 	center := float64(size) / 2
 	img := ebiten.NewImage(size, size)
-	// ベース船体を先に敷き、その上にパーツを重ねる。
-	DrawShipBase(img, center, center, gridHalf, g, drawTheme)
+	// ベース船体スプライトを先に敷き、その上にパーツスプライトを重ねる。
+	// スラスタはアイドルのセルで焼き込み、点火スプライト・炎は drawThrust が手前に重ねる。
+	DrawShipBase(img, center, center, gridHalf, g, theme)
 	for _, p := range s.Parts {
 		x := center + float64(p.GX)*g - g/2
 		y := center + float64(p.GY)*g - g/2
-		DrawPart(img, p.Kind(), float32(x), float32(y), float32(GridSize), drawTheme, p.Rotation)
+		DrawPart(img, p.Kind(), float32(x), float32(y), float32(GridSize), theme, p.Rotation)
 	}
 	s.image = img
-	// ピボット（回転中心）は従来どおり原点セルのコックピット重心位置に保つ。
-	// これで PartLocalCenter・当たり判定・発射計算は変更不要。
+	// ピボット（回転中心）は従来どおり原点セルの中心（=グリッド中心）から
+	// partPivotShiftY だけ後方に置く。PartLocalCenter・当たり判定・発射計算は変更不要。
 	s.imageOffsetX = center
 	s.imageOffsetY = center + partPivotShiftY
 	s.cachedTheme = theme
@@ -216,27 +226,62 @@ func (s *Ship) DrawAt(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
 	// 画像を CW に π/2 回す必要がある。
 	op.GeoM.Rotate(s.Angle + math.Pi/2)
 	op.GeoM.Translate(sx, sy)
+	// 海賊機などは LineColor を色乗算として機体全体に適用する（赤系の色分け）。
+	if s.LineColor.A != 0 {
+		op.ColorScale.ScaleWithColor(s.LineColor)
+	}
 	dst.DrawImage(s.image, op)
-	// アフターバーナーは不透明なベース船体に隠れないよう、船体画像の手前に描く。
+	// 推進炎・点火スラスタは不透明なベース船体に隠れないよう、船体画像の手前に描く。
+	// 点火中は炎アニメ、停止直後は消火フレームを一瞬表示する。
 	if s.ThrustState != ThrustOff {
-		s.drawAfterburners(dst, sx, sy, theme)
+		s.drawThrust(dst, sx, sy, false)
+	} else if s.flameOffTimer > 0 {
+		s.drawThrust(dst, sx, sy, true)
 	}
 }
 
-// thrustEmitters は推進炎を出すべきパーツ群を返す。
-// ThrustActiveDir のビットに対応する向きのスラスタを集める（前後と左右を同時に含みうる）。
+// 炎アニメーションの調整値（px は元画像＝16x16 基準）。
+const (
+	flameHoldFrames     = 3 // 1 フレームを何 tick 表示するか（小→中→大→中の送り速度）
+	flameOffFrames      = 6 // 停止直後に消火フレーム（炎消）を出す長さ
+	flameAttachPx       = 3 // 炎を噴射口へ食い込ませる量（半透明エッジ 2px + さらに 1px）
+	defaultThrustDropPx = 7 // 非常用（デフォルト）スラスタの炎を下げる量
+)
+
+// flameAnimCol は AnimTick から炎フレームのシート列（炎大=0/中=1/小=2）を返す。
+// 点火アニメは 小→中→大→中 のループ（= 体感 小中大中小中大…）。
+func flameAnimCol(tick int) int {
+	seq := [4]int{2, 1, 0, 1} // 小, 中, 大, 中
+	return seq[(tick/flameHoldFrames)%4]
+}
+
+// TickThrustAnim は炎アニメ状態を 1 フレーム進める（Player/Pirate の Update から毎フレーム呼ぶ）。
+// 点火中は炎送りカウンタを進め、直近の噴射方向を記録し消火タイマーを張り直す。
+// 停止中は消火タイマーを減らし、0 になるまで消火フレームを描けるようにする。
+func (s *Ship) TickThrustAnim() {
+	s.AnimTick++
+	if s.ThrustState != ThrustOff {
+		s.lastActiveDir = s.ThrustActiveDir
+		s.flameOffTimer = flameOffFrames
+	} else if s.flameOffTimer > 0 {
+		s.flameOffTimer--
+	}
+}
+
+// thrustEmittersFor は dir のビットに対応する向きのスラスタ（炎を出すパーツ）を返す。
 // Thruster が 1 つも無い場合は Cockpit を非常用エミッタとして返す（前進方向のみ）。
-func (s *Ship) thrustEmitters() []Part {
+// プレイヤー機（コックピット非搭載）の非常推進は drawThrust が船体後端から別途描く。
+func (s *Ship) thrustEmittersFor(dir ThrustActiveDir) []Part {
 	dirActive := func(d ThrustDir) bool {
 		switch d {
 		case ThrustDirForward:
-			return s.ThrustActiveDir&ThrustActiveForward != 0
+			return dir&ThrustActiveForward != 0
 		case ThrustDirBackward:
-			return s.ThrustActiveDir&ThrustActiveBackward != 0
+			return dir&ThrustActiveBackward != 0
 		case ThrustDirLeft:
-			return s.ThrustActiveDir&ThrustActiveLeft != 0
+			return dir&ThrustActiveLeft != 0
 		case ThrustDirRight:
-			return s.ThrustActiveDir&ThrustActiveRight != 0
+			return dir&ThrustActiveRight != 0
 		}
 		return false
 	}
@@ -254,13 +299,9 @@ func (s *Ship) thrustEmitters() []Part {
 	if hasThruster {
 		return out
 	}
-	// 非常用推進: 前進方向のみ。
-	if s.ThrustActiveDir&ThrustActiveForward == 0 {
+	if dir&ThrustActiveForward == 0 {
 		return nil
 	}
-	// 海賊機はコックピットパーツを非常用エミッタにする。
-	// プレイヤー機（コックピット非搭載）の非常推進炎は drawAfterburners が
-	// 船体後端から別途描く（ここでは何も返さない）。
 	for _, p := range s.Parts {
 		if p.Kind() == PartCockpit {
 			return []Part{p}
@@ -269,67 +310,36 @@ func (s *Ship) thrustEmitters() []Part {
 	return nil
 }
 
-// drawAfterburners は各推進エミッタ（Thruster、または非常時の Cockpit）の後端から
-// 各パーツの向き（Rotation）に応じた方向へ炎を描画する。
-// パーツのローカル「後端」と「炎方向」は Rotation で 90° 単位に回転する。
-func (s *Ship) drawAfterburners(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
-	sin, cos := math.Sin(s.Angle), math.Cos(s.Angle)
+// drawThrust は点火中のスラスタへ点火スプライトと炎スプライトを重ねて描く。
+// off=true のときは停止直後の消火フレーム（炎消）を直近の噴射方向に一瞬描く。
+// 炎は元画像の上 2px が半透明なので、後方へ 2px ぶん食い込ませて噴射口に密着させる。
+func (s *Ship) drawThrust(dst *ebiten.Image, sx, sy float64, off bool) {
 	g := float64(GridSize)
-
-	var length, halfWidth, jitter float64
-	var lineWidth float32
-	if s.ThrustState == ThrustBoost {
-		length = g * 1.5
-		halfWidth = g * 0.32
-		jitter = g * 0.35
-		lineWidth = 2
-	} else {
-		length = g * 0.55
-		halfWidth = g * 0.16
-		jitter = g * 0.12
-		lineWidth = 1
-	}
-	line := theme.Line
-	boost := s.ThrustState == ThrustBoost
-
-	// ローカル → ワールド変換: 画像と同じ R(angle + π/2)
-	// 結果は (lx, ly) → (-sin*lx - cos*ly, cos*lx - sin*ly)
+	scale := g / float64(assetimage.CellSize)
+	overlap := float64(flameAttachPx) * scale // 噴射口への食い込み（後方へ詰める）
+	sin, cos := math.Sin(s.Angle), math.Cos(s.Angle)
 	toWorld := func(lx, ly float64) (float64, float64) {
 		return -sin*lx - cos*ly, cos*lx - sin*ly
 	}
 
-	// emitFlame は基点 (baseX, baseY)（スクリーン）から後方単位ベクトル (bx, by)・
-	// 接線単位ベクトル (tx, ty) の向きへ炎を 1 つ描く。
-	emitFlame := func(baseX, baseY, bx, by, tx, ty float64) {
-		jLen := length + (rand.Float64()*2-1)*jitter
-		if jLen < length*0.4 {
-			jLen = length * 0.4
-		}
-		tipX := baseX + bx*jLen
-		tipY := baseY + by*jLen
-		leftX := baseX + tx*halfWidth
-		leftY := baseY + ty*halfWidth
-		rightX := baseX - tx*halfWidth
-		rightY := baseY - ty*halfWidth
-
-		vector.StrokeLine(dst, float32(leftX), float32(leftY), float32(tipX), float32(tipY), lineWidth, line, false)
-		vector.StrokeLine(dst, float32(rightX), float32(rightY), float32(tipX), float32(tipY), lineWidth, line, false)
-
-		if boost {
-			// ブースト時はコア炎＋基底ラインを足して派手さを増す
-			coreLen := jLen * (0.45 + rand.Float64()*0.15)
-			coreTipX := baseX + bx*coreLen
-			coreTipY := baseY + by*coreLen
-			coreHalf := halfWidth * 0.5
-			cLeftX := baseX + tx*coreHalf
-			cLeftY := baseY + ty*coreHalf
-			cRightX := baseX - tx*coreHalf
-			cRightY := baseY - ty*coreHalf
-			vector.StrokeLine(dst, float32(cLeftX), float32(cLeftY), float32(coreTipX), float32(coreTipY), 1, line, false)
-			vector.StrokeLine(dst, float32(cRightX), float32(cRightY), float32(coreTipX), float32(coreTipY), 1, line, false)
-			vector.StrokeLine(dst, float32(leftX), float32(leftY), float32(rightX), float32(rightY), 1, line, false)
-		}
+	dir := s.ThrustActiveDir
+	flameCol := flameAnimCol(s.AnimTick)
+	flameScale := 1.0
+	if s.ThrustState == ThrustBoost {
+		flameScale = 1.4
 	}
+	drawFiring := true
+	if off {
+		dir = s.lastActiveDir
+		flameCol = 3 // 炎消
+		flameScale = 1.0
+		drawFiring = false
+	}
+	if dir == 0 {
+		return
+	}
+	flameImg := assetimage.Cell(flameCol, 0)
+	firingImg := assetimage.Cell(2, 1) // スラスタ点火セル
 
 	hasThruster := false
 	for _, p := range s.Parts {
@@ -339,15 +349,11 @@ func (s *Ship) drawAfterburners(dst *ebiten.Image, sx, sy float64, theme *ui.The
 		}
 	}
 
-	for _, p := range s.thrustEmitters() {
+	for _, p := range s.thrustEmittersFor(dir) {
 		r := ((p.Rotation % 4) + 4) % 4
-		// パーツ中心のローカル位置
 		cxL, cyL := PartLocalCenter(p.GX, p.GY)
-		// 回転前の「後端中心オフセット」と「後方ベクトル」: ローカル +y が後方。
-		// 画像は ebiten の GeoM.Rotate(R*π/2) で回転するため、ローカル +y は
-		// (x, y) → (-y, x) に従って回る。これは視覚的に CW 90°×R 回転に相当する。
-		// (0, 1) → R=0:(0,1) R=1:(-1,0) R=2:(0,-1) R=3:(1,0)
-		rxL, ryL := 0.0, 0.0
+		// 後方単位ベクトル（ローカル）: (0,1) を CW 90°×R 回転（drawCellSprite と同じ規約）。
+		var rxL, ryL float64
 		switch r {
 		case 0:
 			rxL, ryL = 0, 1
@@ -358,27 +364,41 @@ func (s *Ship) drawAfterburners(dst *ebiten.Image, sx, sy float64, theme *ui.The
 		case 3:
 			rxL, ryL = 1, 0
 		}
-		// 後端中心位置（ローカル）= パーツ中心 + 後方ベクトル × g/2
-		halfG := g / 2
-		rearLx := cxL + rxL*halfG
-		rearLy := cyL + ryL*halfG
-		// ワールド座標へ変換（パーツ後端と後方単位ベクトル）
-		wox, woy := toWorld(rearLx, rearLy)
-		bx, by := toWorld(rxL, ryL)
-		// 接線方向（炎幅）: (rxL, ryL) を CW 90° で (ryL, -rxL)
-		tx, ty := toWorld(ryL, -rxL)
-		emitFlame(sx+wox, sy+woy, bx, by, tx, ty)
+		rot := s.Angle + math.Pi/2 + float64(r)*(math.Pi/2)
+		// 点火スラスタをアイドルの上に重ねる（スラスタパーツのときだけ）。
+		if drawFiring && p.Kind() == PartThruster {
+			wox, woy := toWorld(cxL, cyL)
+			s.drawWorldSprite(dst, firingImg, sx+wox, sy+woy, g, rot)
+		}
+		// 炎: パーツ中心から 1 セル後方、さらに overlap ぶん噴射口へ詰める。
+		fLx := cxL + rxL*(g-overlap)
+		fLy := cyL + ryL*(g-overlap)
+		wox, woy := toWorld(fLx, fLy)
+		s.drawWorldSprite(dst, flameImg, sx+wox, sy+woy, g*flameScale, rot)
 	}
 
-	// スラスタ未搭載で前進中は、ベースの非常推進炎を船体後端（ハル尾部）中央から出す。
-	// 原点から出すと船体に埋もれるため、ハル後端まで基点を下げる。
-	if !hasThruster && s.ThrustActiveDir&ThrustActiveForward != 0 {
+	// スラスタ未搭載で前進中は、ベース内蔵スラスタ（底面中央）の非常推進炎を出す。
+	// ベース絵の噴射口がやや下にあるため defaultThrustDropPx ぶん下げる。
+	if !hasThruster && dir&ThrustActiveForward != 0 {
 		_, hHalf := shipHullExtent(s.GridHalf(), g)
-		wox, woy := toWorld(0, hHalf*0.92) // ローカル +y がハル後端方向
-		bx, by := toWorld(0, 1)            // 後方単位ベクトル
-		tx, ty := toWorld(1, 0)            // 接線単位ベクトル
-		emitFlame(sx+wox, sy+woy, bx, by, tx, ty)
+		wox, woy := toWorld(0, hHalf*0.92-overlap+float64(defaultThrustDropPx)*scale)
+		s.drawWorldSprite(dst, flameImg, sx+wox, sy+woy, g*flameScale, s.Angle+math.Pi/2)
 	}
+}
+
+// drawWorldSprite は 16x16 セル画像を cellSize に拡大し、スクリーン (scx, scy) を中心に
+// rot（ラジアン CW）回転して描く。海賊機の色乗算（LineColor）も適用する。
+func (s *Ship) drawWorldSprite(dst, sub *ebiten.Image, scx, scy, cellSize, rot float64) {
+	scale := cellSize / float64(assetimage.CellSize)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(-float64(assetimage.CellSize)/2, -float64(assetimage.CellSize)/2)
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Rotate(rot)
+	op.GeoM.Translate(scx, scy)
+	if s.LineColor.A != 0 {
+		op.ColorScale.ScaleWithColor(s.LineColor)
+	}
+	dst.DrawImage(sub, op)
 }
 
 // shieldExpand はシールド輪郭をベース船体外形より広げる倍率。

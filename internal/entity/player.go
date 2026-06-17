@@ -417,6 +417,9 @@ func (p *Player) Update() {
 			p.shieldRegenAcc = 0
 		}
 	}
+
+	// 推進炎アニメーションを進める（点火・消火スプライトの送り）。
+	p.TickThrustAnim()
 }
 
 // Damage はダメージを適用する。シールドが先に吸収し、超過分が HP を削る。

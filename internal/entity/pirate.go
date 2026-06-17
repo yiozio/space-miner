@@ -70,9 +70,11 @@ func (p *Pirate) Update(playerX, playerY float64) ([]Bullet, []LaserShot, []Dron
 	// 推進: PreferredDist より遠ければ前進、十分近ければ慣性で滑る
 	accel := 0.0
 	p.ThrustState = ThrustOff
+	p.ThrustActiveDir = 0
 	if dist > p.Pattern.PreferredDist+80 {
 		accel = p.Pattern.ThrustAccel
 		p.ThrustState = ThrustOn
+		p.ThrustActiveDir = ThrustActiveForward // 前進炎を出す
 	}
 	p.VX += accel * math.Cos(p.Angle)
 	p.VY += accel * math.Sin(p.Angle)
@@ -96,6 +98,7 @@ func (p *Pirate) Update(playerX, playerY float64) ([]Bullet, []LaserShot, []Dron
 	if p.droneTimer > 0 {
 		p.droneTimer--
 	}
+	p.TickThrustAnim() // 推進炎アニメーションを進める
 
 	// ドローン設置: 射程内かつ独立クールダウンが切れていれば、向きに依らず設置する。
 	var drones []Drone

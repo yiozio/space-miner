@@ -7,11 +7,9 @@ package entity
 // 個別ベースの定義データは data_shipbases.go を参照（ADR 0005）。
 
 import (
-	"math"
-
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
+	assetimage "github.com/yiozio/space-miner/internal/asset/image"
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
@@ -98,42 +96,19 @@ func shipHullPolygon(cx, cy float64, wHalf, hHalf float64) [][2]float64 {
 	}
 }
 
-// DrawShipBase は (cx, cy) を中心としたベース船体をワイヤーフレームで描画する。
-// 背景色で塗りつぶして船体シルエット（星空を遮る）を作り、theme.Line で輪郭、
-// theme.LineDim で内部ディテール（中心線・補強材）を描く。
+// DrawShipBase は (cx, cy) を 3x3 グリッド中心として、ベース船体スプライトを描画する。
 // cellSize はグリッド 1 セルの論理ピクセル（探索は GridSize、エディタは拡大値）。
-func DrawShipBase(dst *ebiten.Image, cx, cy float64, gridHalf int, cellSize float64, theme *ui.Theme) {
-	wHalf, hHalf := shipHullExtent(gridHalf, cellSize)
-	pts := shipHullPolygon(cx, cy, wHalf, hHalf)
-
-	// 不透明な背景色で塗り、船体のシルエットを作る（後ろの星空を遮る）。
-	var path vector.Path
-	path.MoveTo(float32(pts[0][0]), float32(pts[0][1]))
-	for _, p := range pts[1:] {
-		path.LineTo(float32(p[0]), float32(p[1]))
-	}
-	path.Close()
-	fill := theme.Background
-	fill.A = 255
-	fop := &vector.FillOptions{}
-	dop := &vector.DrawPathOptions{AntiAlias: true}
-	dop.ColorScale.ScaleWithColor(fill)
-	vector.FillPath(dst, &path, fop, dop)
-
-	// 内部ディテール（薄い色）: 中心線と 2 本の補強材。輪郭の前に描いて下に敷く。
-	dim := theme.LineDim
-	detailW := float32(math.Max(1, cellSize*0.03))
-	vector.StrokeLine(dst, float32(cx), float32(cy-hHalf*0.55), float32(cx), float32(cy+hHalf*0.85), detailW, dim, true)
-	vector.StrokeLine(dst, float32(cx-wHalf*0.6), float32(cy+hHalf*0.1), float32(cx+wHalf*0.6), float32(cy+hHalf*0.1), detailW, dim, true)
-	vector.StrokeLine(dst, float32(cx-wHalf*0.45), float32(cy+hHalf*0.55), float32(cx+wHalf*0.45), float32(cy+hHalf*0.55), detailW, dim, true)
-
-	// 輪郭（明るい色）。
-	lineW := float32(math.Max(1.5, cellSize*0.045))
-	for i := range pts {
-		j := (i + 1) % len(pts)
-		vector.StrokeLine(dst,
-			float32(pts[i][0]), float32(pts[i][1]),
-			float32(pts[j][0]), float32(pts[j][1]),
-			lineW, theme.Line, true)
-	}
+// スプライトはセル 16px を cellSize に拡大（ニアレスト補間）して敷く。
+// 色分け（海賊機の赤など）は呼び出し側が ColorScale で機体全体に適用する。
+func DrawShipBase(dst *ebiten.Image, cx, cy float64, gridHalf int, cellSize float64, _ *ui.Theme) {
+	base := assetimage.ShipBase()
+	scale := cellSize / float64(assetimage.CellSize)
+	// スプライト内での 3x3 グリッド中心（パネル左上 + パネル数 × 16 / 2）。
+	span := float64(2*gridHalf+1) * float64(assetimage.CellSize)
+	gcx := float64(assetimage.ShipBaseGridX) + span/2
+	gcy := float64(assetimage.ShipBaseGridY) + span/2
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate(cx-gcx*scale, cy-gcy*scale)
+	dst.DrawImage(base, op)
 }

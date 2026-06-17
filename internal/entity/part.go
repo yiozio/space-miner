@@ -6,6 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
+	assetimage "github.com/yiozio/space-miner/internal/asset/image"
 	"github.com/yiozio/space-miner/internal/ui"
 )
 
@@ -75,11 +76,43 @@ func (p Part) ThrustDir() ThrustDir {
 	return ThrustDirForward
 }
 
+// partSpriteCell は Kind に対応するパーツシートのセル (col, row) を返す。
+// シート未収録の Kind（AutoAim・Cockpit）は ok=false で、ベクター描画にフォールバックする。
+// スラスタはアイドル時のセルを返す（点火時セル・炎は ship.go の推進描画が別途重ねる）。
+func partSpriteCell(kind PartKind) (col, row int, ok bool) {
+	switch kind {
+	case PartGun:
+		return 0, 1, true
+	case PartThruster:
+		return 1, 1, true // アイドル
+	case PartShield:
+		return 3, 1, true
+	case PartArmor:
+		return 0, 2, true
+	case PartMineLayer:
+		return 1, 2, true
+	case PartDroneLauncher:
+		return 2, 2, true
+	case PartWarp:
+		return 3, 2, true
+	case PartCargo:
+		return 2, 3, true
+	case PartFuel:
+		return 3, 3, true
+	}
+	return 0, 0, false
+}
+
 // DrawPart は指定 Kind のアイコンを image 上の (x, y) を該当グリッド左上として描画する。
 // cellSize はグリッド一辺の論理ピクセル数で、エディタのような拡大表示にも対応する。
-// rotation は 90° 単位の時計回り回転（0..3）。0 ならそのまま、それ以外は一時画像経由で回転 blit。
-// バリアント間で見た目は共通（Kind で分岐）。
+// rotation は 90° 単位の時計回り回転（0..3）。
+// スプライトがある Kind はピクセル画像を、無い Kind は従来のベクター描画を使う。
 func DrawPart(dst *ebiten.Image, kind PartKind, x, y, cellSize float32, theme *ui.Theme, rotation int) {
+	if col, row, ok := partSpriteCell(kind); ok {
+		drawCellSprite(dst, assetimage.Cell(col, row), float64(x), float64(y), float64(cellSize), rotation)
+		return
+	}
+	// ベクターフォールバック（AutoAim 等）。
 	r := ((rotation % 4) + 4) % 4
 	if r == 0 {
 		drawPartRaw(dst, kind, x, y, cellSize, theme)
@@ -93,6 +126,22 @@ func DrawPart(dst *ebiten.Image, kind PartKind, x, y, cellSize float32, theme *u
 	op.GeoM.Rotate(float64(r) * (3.141592653589793 / 2))
 	op.GeoM.Translate(float64(x)+half, float64(y)+half)
 	dst.DrawImage(tmp, op)
+}
+
+// drawCellSprite は 16x16 のセル画像を cellSize に拡大し、セル中心まわりに
+// rotation（90° 単位 CW）回転して (x, y) を左上とするセルへ描く。ニアレスト補間でドット感を保つ。
+func drawCellSprite(dst, sub *ebiten.Image, x, y, cellSize float64, rotation int) {
+	r := ((rotation % 4) + 4) % 4
+	scale := cellSize / float64(assetimage.CellSize)
+	half := cellSize / 2
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(-float64(assetimage.CellSize)/2, -float64(assetimage.CellSize)/2)
+	op.GeoM.Scale(scale, scale)
+	if r != 0 {
+		op.GeoM.Rotate(float64(r) * (math.Pi / 2))
+	}
+	op.GeoM.Translate(x+half, y+half)
+	dst.DrawImage(sub, op)
 }
 
 // drawPartRaw は回転なしの素体描画。
