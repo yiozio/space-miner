@@ -11,6 +11,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	assetimage "github.com/yiozio/space-miner/internal/asset/image"
 	"github.com/yiozio/space-miner/internal/asset/sound"
 	"github.com/yiozio/space-miner/internal/dialog"
 	"github.com/yiozio/space-miner/internal/entity"
@@ -931,7 +932,7 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 	// 区画外（lastMap=nil）では描かない。プレイ可能領域 ±30000 内なら近隣区画の Body も視野に入る。
 	for i := range e.world.Maps {
 		m := &e.world.Maps[i]
-		drawCelestialBackdrop(dst, &m.Body, m.CX, m.CY, e.cameraX, e.cameraY, cx, cy)
+		drawCelestialBackdrop(dst, &m.Body, m.CX, m.CY, e.cameraX, e.cameraY, cx, cy, e.playtime)
 	}
 
 	// 宇宙ステーション（背景扱い）
@@ -1378,8 +1379,14 @@ func drawTrailLightSized(dst *ebiten.Image, sx, sy, base, flicker float64, c col
 	vector.FillCircle(dst, float32(sx), float32(sy), float32(w/2), lit, true)
 }
 
+// planetSpinTurnsPerSec は惑星の自転速度（毎秒の周回率）。小さいほどゆっくり回る。
+const planetSpinTurnsPerSec = 0.02
+
+// planetCloudSpeed は雲アニメ（GIF）の再生速度倍率。1.0 で GIF 本来の速さ。
+const planetCloudSpeed = 0.5
+
 func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
-	mapCX, mapCY, cameraX, cameraY, screenCX, screenCY float64) {
+	mapCX, mapCY, cameraX, cameraY, screenCX, screenCY, playtime float64) {
 	if body == nil || body.BackdropRadius <= 0 {
 		return
 	}
@@ -1393,6 +1400,16 @@ func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
 	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
 	if sx+r < 0 || sx-r > float32(sw) || sy+r < 0 || sy-r > float32(sh) {
 		return
+	}
+	// 惑星はテクスチャを貼った自転する立体球として描く（シェーダ）。失敗時は平面描画へ続行。
+	if body.Kind == entity.CelestialPlanet {
+		// 自転位相は 1 周で正規化（長時間プレイでも float32 精度を保つ）。
+		spin := math.Mod(playtime*planetSpinTurnsPerSec, 1.0)
+		// 雲のアニメーションは GIF を planetCloudSpeed 倍速で再生（控えめにゆっくり）。
+		tex := assetimage.Planet3rdFrameAt(playtime * planetCloudSpeed)
+		if drawPlanetSphere(dst, tex, float64(sx), float64(sy), float64(r), spin) {
+			return
+		}
 	}
 	// 暗側ベース（不透明）。ここが影の側として残る。
 	dark := scaleColor(body.Color, 0.9)
