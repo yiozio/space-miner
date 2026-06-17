@@ -1407,7 +1407,12 @@ func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
 		spin := math.Mod(playtime*planetSpinTurnsPerSec, 1.0)
 		// 雲のアニメーションは GIF を planetCloudSpeed 倍速で再生（控えめにゆっくり）。
 		tex := assetimage.Planet3rdFrameAt(playtime * planetCloudSpeed)
-		if drawPlanetSphere(dst, tex, float64(sx), float64(sy), float64(r), spin) {
+		// Aurora は青白い大気圏層を重ねる（端ほど濃い）。他の惑星は大気なし。
+		atmo := planetAtmosphere{}
+		if body.Name == "Aurora" {
+			atmo = planetAtmosphere{strength: 0.8, color: [3]float32{0.6, 0.8, 1.0}, outer: 1.07}
+		}
+		if drawPlanetSphere(dst, tex, float64(sx), float64(sy), float64(r), spin, atmo) {
 			return
 		}
 	}
