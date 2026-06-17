@@ -28,6 +28,12 @@ const (
 	ShipBaseGridY = 8
 )
 
+// ShipBaseW, ShipBaseH はベース船体スプライトの元ピクセルサイズ（PNG と一致、テストで検証）。
+const (
+	ShipBaseW = 52
+	ShipBaseH = 61
+)
+
 var (
 	loadOnce sync.Once
 	shipBase *ebiten.Image

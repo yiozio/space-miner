@@ -81,21 +81,6 @@ func shipHullExtent(gridHalf int, cellSize float64) (wHalf, hHalf float64) {
 	return ext * 1.04, ext * 1.30
 }
 
-// shipHullPolygon は中心 (cx, cy) を基準にしたベース船体の輪郭頂点を返す（時計回り、ローカル -y が前方）。
-func shipHullPolygon(cx, cy float64, wHalf, hHalf float64) [][2]float64 {
-	return [][2]float64{
-		{cx, cy - hHalf},                  // 機首
-		{cx + wHalf*0.55, cy - hHalf*0.5}, // 右肩
-		{cx + wHalf, cy + hHalf*0.12},     // 右舷中央
-		{cx + wHalf*0.7, cy + hHalf*0.7},  // 右腰
-		{cx + wHalf*0.42, cy + hHalf},     // 右尾
-		{cx - wHalf*0.42, cy + hHalf},     // 左尾
-		{cx - wHalf*0.7, cy + hHalf*0.7},  // 左腰
-		{cx - wHalf, cy + hHalf*0.12},     // 左舷中央
-		{cx - wHalf*0.55, cy - hHalf*0.5}, // 左肩
-	}
-}
-
 // DrawShipBase は (cx, cy) を 3x3 グリッド中心として、ベース船体スプライトを描画する。
 // cellSize はグリッド 1 セルの論理ピクセル（探索は GridSize、エディタは拡大値）。
 // スプライトはセル 16px を cellSize に拡大（ニアレスト補間）して敷く。

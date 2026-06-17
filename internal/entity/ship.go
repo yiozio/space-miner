@@ -63,15 +63,17 @@ type Ship struct {
 	imageOffsetY float64 // 画像内のコックピット中心 Y
 }
 
-// cockpitPivotFracY はコックピット三角形（頂点が上・底辺が下）の重心の、
-// セル上端からの y 比率。回転中心・軌跡・光点をこの重心に合わせる。
-// 三角形の頂点 y 比は (0.12, 0.88, 0.88)（drawPartRaw の inset=0.12 に対応）。
-const cockpitPivotFracY = (0.12 + 0.88 + 0.88) / 3.0
+// shipPivotDropPx は回転中心を自機画像（ベース船体スプライト）の中心から下げる量（元画像px）。
+const shipPivotDropPx = 2
 
-// partPivotShiftY は回転中心（コックピット重心）がセル中心より前寄りにあることによる
-// ローカル y の補正量。パーツ中心のローカル y は GY*GridSize - partPivotShiftY となる。
-// セル基準（GY*GridSize）のまま扱うと、機体描画に対して後方へこの分だけズレる。
-const partPivotShiftY = GridSize * (cockpitPivotFracY - 0.5)
+// partPivotShiftY は回転中心（ピボット）が 3x3 グリッド中心より下にある量（論理px）。
+// 回転中心を「ベース船体スプライト中心 + shipPivotDropPx(元画像px) 下」に置くための補正。
+// スプライト中心 y と 3x3 グリッド中心 y（= ShipBaseGridY + 3セル/2、いずれも元画像px）の差に
+// ドロップ量を足し、論理px（×GridSize/CellSize）へ換算する。3x3 ベース（Pebble）前提。
+// パーツ中心のローカル y は GY*GridSize - partPivotShiftY（PartLocalCenter）。
+const partPivotShiftY = (assetimage.ShipBaseH/2.0 -
+	(assetimage.ShipBaseGridY + 3*assetimage.CellSize/2.0) +
+	shipPivotDropPx) * (GridSize / assetimage.CellSize)
 
 // PartLocalCenter はパーツ (gx, gy) の機体ローカル座標における中心位置を返す。
 // 機体描画（ensureImage の imageOffset）と同じ基準なので、発射位置・衝突判定・
@@ -138,38 +140,155 @@ func (s *Ship) HullRadius() float64 {
 	return hHalf
 }
 
-// HullColliders はベース船体を近似する衝突円を、ピボット基準のローカル座標で返す
-// （各要素は {lx, ly, radius}）。当たり判定をベース船体の外形に合わせるために使う。
-// 中心線上に数個の円を並べ、各 y 位置でのハル半幅を半径とする（縦長のカプセル状近似）。
-func (s *Ship) HullColliders() [][3]float64 {
-	wHalf, hHalf := shipHullExtent(s.GridHalf(), float64(GridSize))
-	// t: ハル縦位置（-1=機首, +1=機尾）, wf: その位置のハル半幅 / wHalf
-	samples := [...]struct{ t, wf float64 }{
-		{-0.55, 0.50},
-		{0.12, 1.00},
-		{0.50, 0.80},
-		{0.85, 0.55},
-	}
-	out := make([][3]float64, len(samples))
-	for i, smp := range samples {
-		// ハル中心はピボットより partPivotShiftY だけ前方にあるので y を補正する。
-		out[i] = [3]float64{0, smp.t*hHalf - partPivotShiftY, smp.wf * wHalf}
-	}
-	return out
+// hullInsetPx は当たり判定矩形を自機画像の長方形から各辺内側へ縮める量（元画像px）。
+// 幅・高さともに左右/上下で 2px ずつ、合計 4px 縮む。
+const hullInsetPx = 2
+
+// HullRect は当たり判定の長方形（自機画像の矩形を幅・高さ 4px 縮めたもの）を、
+// ピボット基準・機体ローカル軸の中心 (cx, cy) と半幅・半高 (halfW, halfH) で返す。
+// 実際の当たり判定は機体角に合わせて回転した矩形（OBB）として扱う。
+func (s *Ship) HullRect() (cx, cy, halfW, halfH float64) {
+	scale := float64(GridSize) / float64(assetimage.CellSize)
+	span := float64(2*s.GridHalf()+1) * float64(assetimage.CellSize)
+	gcx := float64(assetimage.ShipBaseGridX) + span/2 // グリッド中心（元画像px）
+	gcy := float64(assetimage.ShipBaseGridY) + span/2
+	inset := float64(hullInsetPx)
+	// スプライト矩形（縮め済み）をグリッド中心基準の元画像px で求める。
+	left := -gcx + inset
+	right := float64(assetimage.ShipBaseW) - gcx - inset
+	top := -gcy + inset
+	bottom := float64(assetimage.ShipBaseH) - gcy - inset
+	// 論理px・ピボット基準へ。グリッド中心はピボットより partPivotShiftY だけ上（-y）。
+	cx = (left + right) / 2 * scale
+	cy = (top+bottom)/2*scale - partPivotShiftY
+	halfW = (right - left) / 2 * scale
+	halfH = (bottom - top) / 2 * scale
+	return
 }
+
+// hullLocal はワールド点 (wx, wy) を機体ローカル（ピボット原点・機体軸整列）へ変換する。
+// DrawAt のローカル→ワールド変換 (-sin·lx-cos·ly, cos·lx-sin·ly) の逆変換。
+func (s *Ship) hullLocal(wx, wy float64) (lx, ly float64) {
+	dx := wx - s.X
+	dy := wy - s.Y
+	sin, cos := math.Sin(s.Angle), math.Cos(s.Angle)
+	return -sin*dx + cos*dy, -cos*dx - sin*dy
+}
+
+// hullToWorldDir はローカル方向ベクトルをワールド方向へ回す（並進なし）。
+func (s *Ship) hullToWorldDir(lx, ly float64) (wx, wy float64) {
+	sin, cos := math.Sin(s.Angle), math.Cos(s.Angle)
+	return -sin*lx - cos*ly, cos*lx - sin*ly
+}
+
+// HullContains はワールド点が当たり判定矩形（OBB）内かを返す。
+func (s *Ship) HullContains(wx, wy float64) bool {
+	cx, cy, hw, hh := s.HullRect()
+	lx, ly := s.hullLocal(wx, wy)
+	return math.Abs(lx-cx) <= hw && math.Abs(ly-cy) <= hh
+}
+
+// HullWithin はワールド点が当たり判定矩形から距離 radius 以内にあるかを返す（爆発の波及等）。
+func (s *Ship) HullWithin(wx, wy, radius float64) bool {
+	cx, cy, hw, hh := s.HullRect()
+	lx, ly := s.hullLocal(wx, wy)
+	ddx := math.Max(0, math.Abs(lx-cx)-hw)
+	ddy := math.Max(0, math.Abs(ly-cy)-hh)
+	return ddx*ddx+ddy*ddy <= radius*radius
+}
+
+// HullCircleHit は半径 r の円 (wx, wy) が当たり判定矩形に重なっていれば、機体を円から
+// 押し出すワールド単位法線 (nx, ny) と侵入量 depth を返す（OBB vs 円）。
+func (s *Ship) HullCircleHit(wx, wy, r float64) (nx, ny, depth float64, hit bool) {
+	cx, cy, hw, hh := s.HullRect()
+	lx, ly := s.hullLocal(wx, wy)
+	// 矩形内で円中心に最も近い点
+	qx := math.Max(cx-hw, math.Min(lx, cx+hw))
+	qy := math.Max(cy-hh, math.Min(ly, cy+hh))
+	dx, dy := lx-qx, ly-qy // 矩形面 → 円中心
+	dist2 := dx*dx + dy*dy
+	var lnx, lny float64
+	if dist2 > 1e-9 {
+		if dist2 > r*r {
+			return 0, 0, 0, false
+		}
+		dist := math.Sqrt(dist2)
+		lnx, lny = -dx/dist, -dy/dist // 機体を円から離す向き
+		depth = r - dist
+	} else {
+		// 円中心が矩形内: 最も近い辺の外向きに押し出す
+		dl, dr := lx-(cx-hw), (cx+hw)-lx
+		dt, db := ly-(cy-hh), (cy+hh)-ly
+		m := math.Min(math.Min(dl, dr), math.Min(dt, db))
+		switch m {
+		case dl:
+			lnx, lny = 1, 0
+		case dr:
+			lnx, lny = -1, 0
+		case dt:
+			lnx, lny = 0, 1
+		default:
+			lnx, lny = 0, -1
+		}
+		depth = m + r
+	}
+	nx, ny = s.hullToWorldDir(lnx, lny)
+	return nx, ny, depth, true
+}
+
+// HullRayHit は原点 (ox, oy)・方向 (dx, dy) のレイが当たり判定矩形に当たる最小 t（0..maxT）を返す。
+// レーザーの命中判定に使う（レイ vs OBB をローカル軸の AABB スラブ法で解く）。
+func (s *Ship) HullRayHit(ox, oy, dx, dy, maxT float64) (t float64, ok bool) {
+	cx, cy, hw, hh := s.HullRect()
+	lox, loy := s.hullLocal(ox, oy)
+	// 方向はローカルへ回すだけ（並進なし）。hullLocal の線形部と同じ。
+	sin, cos := math.Sin(s.Angle), math.Cos(s.Angle)
+	ldx := -sin*dx + cos*dy
+	ldy := -cos*dx - sin*dy
+	tmin, tmax := 0.0, maxT
+	slab := func(o, d, lo, hi float64) bool {
+		if math.Abs(d) < 1e-12 {
+			return o >= lo && o <= hi // レイが軸に平行: スラブ内なら通過
+		}
+		t1, t2 := (lo-o)/d, (hi-o)/d
+		if t1 > t2 {
+			t1, t2 = t2, t1
+		}
+		if t1 > tmin {
+			tmin = t1
+		}
+		if t2 < tmax {
+			tmax = t2
+		}
+		return tmin <= tmax
+	}
+	if !slab(lox, ldx, cx-hw, cx+hw) || !slab(loy, ldy, cy-hh, cy+hh) {
+		return 0, false
+	}
+	if tmin < 0 || tmin > maxT {
+		return 0, false
+	}
+	return tmin, true
+}
+
+// trailLightUpPx は光点を自機画像の一番下から上へ寄せる量（元画像px）。
+const trailLightUpPx = 1
 
 // TrailLightOffsets はベース船体の左右に尖った先端（光点の発生位置）の、
 // ピボットからのワールド座標オフセットを 2 つ返す（右先端, 左先端の順）。
-// 軌跡・光点を機体の向きに合わせて配置するために使う。
+// 左右位置は従来どおりハル外形の左右端、y は自機画像の一番下から trailLightUpPx(元画像px) 上。
 func (s *Ship) TrailLightOffsets() [2][2]float64 {
 	sin, cos := math.Sin(s.Angle), math.Cos(s.Angle)
 	toWorld := func(lx, ly float64) (float64, float64) {
 		return -sin*lx - cos*ly, cos*lx - sin*ly
 	}
-	wHalf, hHalf := shipHullExtent(s.GridHalf(), float64(GridSize))
-	// ハル輪郭の左右中央（最も横に張り出した尖り）。ハル中心はピボットより
-	// partPivotShiftY だけ前方にあるので、その分 y を補正する。
-	ly := hHalf*0.12 - partPivotShiftY
+	wHalf, _ := shipHullExtent(s.GridHalf(), float64(GridSize))
+	scale := float64(GridSize) / float64(assetimage.CellSize)
+	span := float64(2*s.GridHalf()+1) * float64(assetimage.CellSize)
+	gcy := float64(assetimage.ShipBaseGridY) + span/2
+	// 画像下端（ローカル, ピボット基準）から trailLightUpPx 上を y にする。
+	bottom := (float64(assetimage.ShipBaseH)-gcy)*scale - partPivotShiftY
+	ly := bottom - trailLightUpPx*scale
 	rx, ry := toWorld(wHalf, ly)
 	lx, lyy := toWorld(-wHalf, ly)
 	return [2][2]float64{{rx, ry}, {lx, lyy}}
@@ -245,7 +364,7 @@ const (
 	flameHoldFrames     = 3 // 1 フレームを何 tick 表示するか（小→中→大→中の送り速度）
 	flameOffFrames      = 6 // 停止直後に消火フレーム（炎消）を出す長さ
 	flameAttachPx       = 3 // 炎を噴射口へ食い込ませる量（半透明エッジ 2px + さらに 1px）
-	defaultThrustDropPx = 7 // 非常用（デフォルト）スラスタの炎を下げる量
+	defaultThrustDropPx = 9 // 非常用（デフォルト）スラスタの炎を下げる量
 )
 
 // flameAnimCol は AnimTick から炎フレームのシート列（炎大=0/中=1/小=2）を返す。
@@ -401,30 +520,39 @@ func (s *Ship) drawWorldSprite(dst, sub *ebiten.Image, scx, scy, cellSize, rot f
 	dst.DrawImage(sub, op)
 }
 
-// shieldExpand はシールド輪郭をベース船体外形より広げる倍率。
-const shieldExpand = 1.12
+// shieldGapPx はシールド長方形を自機画像の外側へ開ける隙間（元画像 px）。
+const shieldGapPx = 1
 
-// DrawShieldOutline はシールド展開中、ベース船体の外周を一回り大きく囲む輪郭線を描く。
-// 船体シルエットと相似のリングを theme.Line で 1 本足す形で「張られている」ことを示す。
-// シールド HP が 1 以上のときに毎フレーム呼び出す想定。
+// DrawShieldOutline はシールド展開中、自機画像（ベース船体スプライト）の長方形の
+// 外側 shieldGapPx ぶん開けたところに長方形の輪郭線を描き「張られている」ことを示す。
+// 長方形は機体と一緒に回転する。シールド HP が 1 以上のとき毎フレーム呼び出す想定。
 func (s *Ship) DrawShieldOutline(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
 	sin, cos := math.Sin(s.Angle), math.Cos(s.Angle)
 	// 船体描画と同じ R(angle + π/2) ローカル → ワールド変換。
 	toWorld := func(lx, ly float64) (float64, float64) {
 		return -sin*lx - cos*ly, cos*lx - sin*ly
 	}
-	wHalf, hHalf := shipHullExtent(s.GridHalf(), float64(GridSize))
-	// ハル中心基準の外形ポリゴンを少し拡大して取る。ハル中心はピボットより
-	// partPivotShiftY だけ前方にあるので、ローカル y をその分補正してから回す。
-	pts := shipHullPolygon(0, 0, wHalf*shieldExpand, hHalf*shieldExpand)
-	n := len(pts)
-	scr := make([][2]float32, n)
-	for i, p := range pts {
-		wx, wy := toWorld(p[0], p[1]-partPivotShiftY)
+	// ベース船体スプライト矩形をピボット基準のローカル座標へ展開する。
+	// スプライトは ensureImage / DrawShipBase と同じく「3x3 グリッド中心」を基準に置かれ、
+	// グリッド中心はピボットより partPivotShiftY だけ前方（-y）にある。
+	bw, bh := assetimage.ShipBaseSize()
+	scale := float64(GridSize) / float64(assetimage.CellSize)
+	span := float64(2*s.GridHalf()+1) * float64(assetimage.CellSize)
+	gcx := float64(assetimage.ShipBaseGridX) + span/2
+	gcy := float64(assetimage.ShipBaseGridY) + span/2
+	gap := float64(shieldGapPx) * scale
+	left := -gcx*scale - gap
+	right := (float64(bw)-gcx)*scale + gap
+	top := -gcy*scale - partPivotShiftY - gap
+	bottom := (float64(bh)-gcy)*scale - partPivotShiftY + gap
+	corners := [4][2]float64{{left, top}, {right, top}, {right, bottom}, {left, bottom}}
+	var scr [4][2]float32
+	for i, c := range corners {
+		wx, wy := toWorld(c[0], c[1])
 		scr[i] = [2]float32{float32(sx + wx), float32(sy + wy)}
 	}
-	for i := 0; i < n; i++ {
-		j := (i + 1) % n
+	for i := 0; i < 4; i++ {
+		j := (i + 1) % 4
 		vector.StrokeLine(dst, scr[i][0], scr[i][1], scr[j][0], scr[j][1], 1.5, theme.Line, true)
 	}
 }

@@ -8,6 +8,9 @@ func TestShipBaseDecodes(t *testing.T) {
 	if w != 52 || h != 61 {
 		t.Fatalf("ShipBaseSize = (%d, %d); want (52, 61)", w, h)
 	}
+	if ShipBaseW != w || ShipBaseH != h {
+		t.Fatalf("ShipBaseW/H consts = (%d, %d); want (%d, %d)", ShipBaseW, ShipBaseH, w, h)
+	}
 }
 
 // TestPartCells はパーツシートが 4x4=16 セル（各 16x16）取り出せることを確認する。

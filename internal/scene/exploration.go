@@ -806,86 +806,52 @@ func (e *Exploration) Update(d Director) error {
 	return nil
 }
 
-// handlePlayerAsteroidCollisions は自機の各パーツと各小惑星グリッドを
-// 円-円判定し、重なりを解消（押し戻し）、相対速度を反射、衝突相対速度に応じて
+// handlePlayerAsteroidCollisions は自機の当たり判定矩形（OBB）と各小惑星グリッド（円）を
+// 判定し、重なりを解消（押し戻し）、相対速度を反射、衝突相対速度に応じて
 // プレイヤーへダメージを与える。小惑星側は質量∞扱いで影響を受けない。
 func (e *Exploration) handlePlayerAsteroidCollisions() {
 	p := e.player
 	g := float64(entity.GridSize)
 	gridR := g / 2 // 小惑星グリッドの半径
 
-	// 自機ベース船体の衝突円（中心オフセット + 半径）をワールド向きで一度算出。
-	sSin, sCos := math.Sin(p.Angle), math.Cos(p.Angle)
-	type collider struct{ ox, oy, r float64 }
-	cols := p.HullColliders()
-	offsets := make([]collider, len(cols))
-	for i, c := range cols {
-		lx, ly := c[0], c[1]
-		// 船体描画と同じ R(angle + π/2) ローカル→ワールド変換
-		offsets[i] = collider{
-			ox: -sSin*lx - sCos*ly,
-			oy: sCos*lx - sSin*ly,
-			r:  c[2],
-		}
-	}
-
 	for _, a := range e.asteroids {
 		aSin, aCos := math.Sin(a.Angle), math.Cos(a.Angle)
-		for i := range offsets {
-			pcx := p.X + offsets[i].ox
-			pcy := p.Y + offsets[i].oy
-			sumR := offsets[i].r + gridR
+		for _, gr := range a.Grids {
+			lgx := float64(gr.GX) * g
+			lgy := float64(gr.GY) * g
+			gcx := a.X + (aCos*lgx - aSin*lgy)
+			gcy := a.Y + (aSin*lgx + aCos*lgy)
 
-			for _, gr := range a.Grids {
-				lgx := float64(gr.GX) * g
-				lgy := float64(gr.GY) * g
-				wgx := aCos*lgx - aSin*lgy
-				wgy := aSin*lgx + aCos*lgy
-				gcx := a.X + wgx
-				gcy := a.Y + wgy
-
-				dx := pcx - gcx
-				dy := pcy - gcy
-				dist := math.Hypot(dx, dy)
-				if dist >= sumR {
-					continue
-				}
-				if dist < 0.001 {
-					dx, dy, dist = 1, 0, 1
-				}
-				nx := dx / dist
-				ny := dy / dist
-				overlap := sumR - dist
-
-				// 重なりを解消（自機のみ動かす）
-				p.X += nx * overlap
-				p.Y += ny * overlap
-				pcx += nx * overlap
-				pcy += ny * overlap
-
-				// 相対速度の法線成分（負なら自機が小惑星に向かっている）
-				rvx := p.VX - a.VX
-				rvy := p.VY - a.VY
-				vNormal := rvx*nx + rvy*ny
-				if vNormal >= 0 {
-					continue
-				}
-
-				impactSpeed := -vNormal
-				if impactSpeed > collisionDamageThreshold {
-					dmg := int((impactSpeed - collisionDamageThreshold) * collisionDamageFactor)
-					if dmg > 0 {
-						e.playDamageSound()
-						p.Damage(dmg)
-					}
-				}
-
-				// 法線成分のみ反射（接線成分はそのまま残す＝かすめ続けない）
-				rvx -= (1 + collisionRestitution) * vNormal * nx
-				rvy -= (1 + collisionRestitution) * vNormal * ny
-				p.VX = a.VX + rvx
-				p.VY = a.VY + rvy
+			nx, ny, depth, hit := p.HullCircleHit(gcx, gcy, gridR)
+			if !hit {
+				continue
 			}
+			// 重なりを解消（自機のみ動かす）。nx,ny は自機を小惑星から離す向き。
+			p.X += nx * depth
+			p.Y += ny * depth
+
+			// 相対速度の法線成分（負なら自機が小惑星に向かっている）
+			rvx := p.VX - a.VX
+			rvy := p.VY - a.VY
+			vNormal := rvx*nx + rvy*ny
+			if vNormal >= 0 {
+				continue
+			}
+
+			impactSpeed := -vNormal
+			if impactSpeed > collisionDamageThreshold {
+				dmg := int((impactSpeed - collisionDamageThreshold) * collisionDamageFactor)
+				if dmg > 0 {
+					e.playDamageSound()
+					p.Damage(dmg)
+				}
+			}
+
+			// 法線成分のみ反射（接線成分はそのまま残す＝かすめ続けない）
+			rvx -= (1 + collisionRestitution) * vNormal * nx
+			rvy -= (1 + collisionRestitution) * vNormal * ny
+			p.VX = a.VX + rvx
+			p.VY = a.VY + rvy
 		}
 	}
 }
@@ -901,20 +867,7 @@ func (e *Exploration) handlePlayerPirateCollisions() {
 	g := float64(entity.GridSize)
 	prR := g / 2 // 海賊パーツの半径
 
-	// 自機ベース船体の衝突円（中心オフセット + 半径）を船体ローカル → ワールド変換
-	pSin, pCos := math.Sin(p.Angle), math.Cos(p.Angle)
-	type collider struct{ ox, oy, r float64 }
-	cols := p.HullColliders()
-	pOffsets := make([]collider, len(cols))
-	for i, c := range cols {
-		lx, ly := c[0], c[1]
-		pOffsets[i] = collider{
-			ox: -pSin*lx - pCos*ly,
-			oy: pCos*lx - pSin*ly,
-			r:  c[2],
-		}
-	}
-
+	// 自機の当たり判定矩形（OBB）と、海賊の各パーツ（円）を判定する。
 	for _, pr := range e.pirates {
 		if pr.HP <= 0 {
 			continue
@@ -925,58 +878,42 @@ func (e *Exploration) handlePlayerPirateCollisions() {
 			prCX := pr.X + (-prSin*lx2 - prCos*ly2)
 			prCY := pr.Y + (prCos*lx2 - prSin*ly2)
 
-			for i := range pOffsets {
-				pCX := p.X + pOffsets[i].ox
-				pCY := p.Y + pOffsets[i].oy
-				sumR := pOffsets[i].r + prR
-
-				dx := pCX - prCX
-				dy := pCY - prCY
-				dist := math.Hypot(dx, dy)
-				if dist >= sumR {
-					continue
-				}
-				if dist < 0.001 {
-					dx, dy, dist = 1, 0, 1
-				}
-				nx := dx / dist
-				ny := dy / dist
-				overlap := sumR - dist
-
-				// 双方を半分ずつ押し戻す（等質量）
-				push := overlap / 2
-				p.X += nx * push
-				p.Y += ny * push
-				pr.X -= nx * push
-				pr.Y -= ny * push
-				prCX -= nx * push
-				prCY -= ny * push
-
-				// 相対速度の法線成分（負なら接近中）
-				rvx := p.VX - pr.VX
-				rvy := p.VY - pr.VY
-				vNormal := rvx*nx + rvy*ny
-				if vNormal >= 0 {
-					continue
-				}
-
-				impactSpeed := -vNormal
-				if impactSpeed > collisionDamageThreshold {
-					dmg := int((impactSpeed - collisionDamageThreshold) * collisionDamageFactor)
-					if dmg > 0 {
-						e.playDamageSound()
-						p.Damage(dmg)
-						pr.TakeHit(dmg)
-					}
-				}
-
-				// 等質量・反発係数 e の弾性衝突インパルス
-				j := -(1 + collisionRestitution) * vNormal / 2
-				p.VX += j * nx
-				p.VY += j * ny
-				pr.VX -= j * nx
-				pr.VY -= j * ny
+			nx, ny, depth, hit := p.HullCircleHit(prCX, prCY, prR)
+			if !hit {
+				continue
 			}
+
+			// 双方を半分ずつ押し戻す（等質量）。nx,ny は自機を海賊から離す向き。
+			push := depth / 2
+			p.X += nx * push
+			p.Y += ny * push
+			pr.X -= nx * push
+			pr.Y -= ny * push
+
+			// 相対速度の法線成分（負なら接近中）
+			rvx := p.VX - pr.VX
+			rvy := p.VY - pr.VY
+			vNormal := rvx*nx + rvy*ny
+			if vNormal >= 0 {
+				continue
+			}
+
+			impactSpeed := -vNormal
+			if impactSpeed > collisionDamageThreshold {
+				dmg := int((impactSpeed - collisionDamageThreshold) * collisionDamageFactor)
+				if dmg > 0 {
+					e.playDamageSound()
+					p.Damage(dmg)
+					pr.TakeHit(dmg)
+				}
+			}
+
+			// 等質量・反発係数 e の弾性衝突インパルス
+			j := -(1 + collisionRestitution) * vNormal / 2
+			p.VX += j * nx
+			p.VY += j * ny
+			pr.VX -= j * nx
+			pr.VY -= j * ny
 		}
 	}
 }
@@ -1022,7 +959,7 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 	}
 
 	// プレイヤー機本体。弾・ビーム・着弾/爆発・AutoAim ビームより先に描き、
-	// それらを不透明なベース船体の手前に出す。軌跡・光点は左右に尖ったハル先端から引く。
+	// それらを不透明なベース船体の手前に出す。軌跡・光点は左右端・画像下端付近から引く。
 	psx := e.player.X - e.cameraX + cx
 	psy := e.player.Y - e.cameraY + cy
 	e.player.DrawAt(dst, psx, psy, theme)
@@ -1495,40 +1432,19 @@ func scaleColor(c color.NRGBA, s float64) color.NRGBA {
 	}
 }
 
-// pirateInsideHull は (x, y) が海賊のベース船体（外形近似の衝突円群）内かを判定する。
-// プレイヤー機の被弾判定（handleHostileBulletsHitPlayer）と同じハル外形で当たりを取る。
+// pirateInsideHull は (x, y) が海賊の当たり判定矩形（OBB）内かを判定する。
 func pirateInsideHull(pr *entity.Pirate, x, y float64) bool {
-	return pirateHullWithin(pr, x, y, 0)
+	return pr.HullContains(x, y)
 }
 
-// pirateHullWithin は (x, y) が海賊のハル外形（衝突円群）から距離 radius 以内にあるかを返す。
-// radius=0 で点がハル内かの判定（pirateInsideHull）、radius>0 で爆発の波及判定に使う。
+// pirateHullWithin は (x, y) が海賊の当たり判定矩形から距離 radius 以内にあるかを返す（爆発の波及等）。
 func pirateHullWithin(pr *entity.Pirate, x, y, radius float64) bool {
-	sin, cos := math.Sin(pr.Angle), math.Cos(pr.Angle)
-	for _, c := range pr.HullColliders() {
-		lx, ly := c[0], c[1]
-		wx := pr.X + (-sin*lx - cos*ly)
-		wy := pr.Y + (cos*lx - sin*ly)
-		if math.Hypot(x-wx, y-wy) <= radius+c[2] {
-			return true
-		}
-	}
-	return false
+	return pr.HullWithin(x, y, radius)
 }
 
-// playerHullWithin は (x, y) が自機のハル外形（衝突円群）から距離 radius 以内にあるかを返す。
+// playerHullWithin は (x, y) が自機の当たり判定矩形から距離 radius 以内にあるかを返す。
 func (e *Exploration) playerHullWithin(x, y, radius float64) bool {
-	p := e.player
-	sin, cos := math.Sin(p.Angle), math.Cos(p.Angle)
-	for _, c := range p.HullColliders() {
-		lx, ly := c[0], c[1]
-		wx := p.X + (-sin*lx - cos*ly)
-		wy := p.Y + (cos*lx - sin*ly)
-		if math.Hypot(x-wx, y-wy) <= radius+c[2] {
-			return true
-		}
-	}
-	return false
+	return e.player.HullWithin(x, y, radius)
 }
 
 // handleExplosiveBullets は爆発弾（ExplosionRadius>0）の着弾を専用処理する。
@@ -1646,36 +1562,15 @@ func (e *Exploration) handlePlayerBulletsHitPirates() {
 	}
 }
 
-// handleHostileBulletsHitPlayer は敵弾とプレイヤー機体の円-点判定を行い、
-// 命中した弾を消費してダメージを与える。判定はベース船体を近似する衝突円群で行う。
+// handleHostileBulletsHitPlayer は敵弾とプレイヤー機体の判定を行い、
+// 命中した弾を消費してダメージを与える。判定は自機の当たり判定矩形（OBB）で行う。
 func (e *Exploration) handleHostileBulletsHitPlayer() {
-	p := e.player
-	pSin, pCos := math.Sin(p.Angle), math.Cos(p.Angle)
-	type collider struct{ wx, wy, r float64 }
-	cols := p.HullColliders()
-	hit := make([]collider, len(cols))
-	for i, c := range cols {
-		lx, ly := c[0], c[1]
-		hit[i] = collider{
-			wx: p.X + (-pSin*lx - pCos*ly),
-			wy: p.Y + (pCos*lx - pSin*ly),
-			r:  c[2],
-		}
-	}
-	insideHull := func(x, y float64) bool {
-		for _, c := range hit {
-			if math.Hypot(x-c.wx, y-c.wy) <= c.r {
-				return true
-			}
-		}
-		return false
-	}
 	for i := len(e.bullets) - 1; i >= 0; i-- {
 		b := &e.bullets[i]
 		if !b.Hostile {
 			continue
 		}
-		if !insideHull(b.X, b.Y) {
+		if !e.player.HullContains(b.X, b.Y) {
 			continue
 		}
 		e.playDamageSound()
@@ -1809,30 +1704,23 @@ func (e *Exploration) fireLaser(l entity.LaserShot) {
 	pirateIdx := -1
 	playerHit := false
 	if !l.Hostile {
-		// プレイヤーが撃ったレーザー → 海賊にダメージ。ハル外形の衝突円群で最近接を取る。
+		// プレイヤーが撃ったレーザー → 海賊にダメージ。当たり判定矩形（OBB）で最近接を取る。
 		for i, pr := range e.pirates {
 			if pr.HP <= 0 {
 				continue
 			}
-			sin, cos := math.Sin(pr.Angle), math.Cos(pr.Angle)
-			for _, c := range pr.HullColliders() {
-				lx, ly := c[0], c[1]
-				wx := pr.X + (-sin*lx - cos*ly)
-				wy := pr.Y + (cos*lx - sin*ly)
-				if t, ok := raySphereHit(l.X, l.Y, l.DX, l.DY, wx, wy, c[2], bestT); ok {
-					bestT = t
-					hit = true
-					hitX = l.X + l.DX*t
-					hitY = l.Y + l.DY*t
-					pirateIdx = i
-					asteroidHit = nil
-				}
+			if t, ok := pr.HullRayHit(l.X, l.Y, l.DX, l.DY, bestT); ok {
+				bestT = t
+				hit = true
+				hitX = l.X + l.DX*t
+				hitY = l.Y + l.DY*t
+				pirateIdx = i
+				asteroidHit = nil
 			}
 		}
 	} else {
-		// 敵レーザー → プレイヤーにダメージ
-		const playerHitRadius = float64(entity.GridSize)
-		if t, ok := raySphereHit(l.X, l.Y, l.DX, l.DY, e.player.X, e.player.Y, playerHitRadius, bestT); ok {
+		// 敵レーザー → プレイヤーにダメージ（当たり判定矩形 OBB）
+		if t, ok := e.player.HullRayHit(l.X, l.Y, l.DX, l.DY, bestT); ok {
 			bestT = t
 			hit = true
 			hitX = l.X + l.DX*t
