@@ -38,7 +38,7 @@ const (
 // ShipBaseW, ShipBaseH はベース船体スプライトの元ピクセルサイズ（PNG と一致、テストで検証）。
 const (
 	ShipBaseW = 52
-	ShipBaseH = 61
+	ShipBaseH = 60
 )
 
 var (

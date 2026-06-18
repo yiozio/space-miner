@@ -35,6 +35,7 @@ const (
 	PartIDMineLayer
 	PartIDDroneStd
 	PartIDDroneGun
+	PartIDThrusterStarter
 )
 
 func init() {
@@ -155,6 +156,17 @@ func init() {
 		ThrustBoostMaxSpeed: 14.0,
 		ThrustBoostFuelCost: 0.30,
 		Weight:              6,
+	})
+	// スターター スラスタ: 最初期の安価な推進機。デフォルト機体に標準搭載する。
+	registerPartDef(&PartDef{
+		ID: PartIDThrusterStarter, Kind: PartThruster,
+		Price:               40,
+		ThrustAccel:         0.08,
+		ThrustMaxSpeed:      5.0,
+		ThrustBoostAccelMul: 2.0,
+		ThrustBoostMaxSpeed: 8.0,
+		ThrustBoostFuelCost: 0.18,
+		Weight:              3,
 	})
 	registerPartDef(&PartDef{
 		ID: PartIDThrusterLight, Kind: PartThruster,

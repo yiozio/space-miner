@@ -5,8 +5,8 @@ import "testing"
 // TestShipBaseDecodes は埋め込みベース船体 PNG がデコードでき、想定サイズであることを確認する。
 func TestShipBaseDecodes(t *testing.T) {
 	w, h := ShipBaseSize()
-	if w != 52 || h != 61 {
-		t.Fatalf("ShipBaseSize = (%d, %d); want (52, 61)", w, h)
+	if w != 52 || h != 60 {
+		t.Fatalf("ShipBaseSize = (%d, %d); want (52, 60)", w, h)
 	}
 	if ShipBaseW != w || ShipBaseH != h {
 		t.Fatalf("ShipBaseW/H consts = (%d, %d); want (%d, %d)", ShipBaseW, ShipBaseH, w, h)

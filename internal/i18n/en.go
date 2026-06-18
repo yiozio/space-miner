@@ -155,6 +155,7 @@ func newEN() *Strings {
 			StatSpeed:     "Speed",
 			StatMax:       "Max",
 			StatBoost:     "Boost",
+			NeedThruster:  "At least one thruster is required",
 			DirForward:    "Forward",
 			DirBackward:   "Backward",
 			DirRight:      "Right",

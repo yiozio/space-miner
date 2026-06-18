@@ -37,7 +37,12 @@ type StationEditor struct {
 	paletteIx     int               // 現在選択中の palette インデックス
 	paletteScroll int               // パレットの先頭表示行（スクロール位置）
 	marqueeTick   int               // 選択行のマーキー用カウンタ（選択が変わると 0 に戻る）
+	notice        string            // 一時的な警告メッセージ（スラスタ必須など）
+	noticeTimer   int               // notice の残り表示フレーム
 }
+
+// noticeDurationFrames は警告メッセージの表示時間（60fps で約 2.5 秒）。
+const noticeDurationFrames = 150
 
 // NewStationEditor は編集シーンを生成する。
 func NewStationEditor(p *entity.Player) *StationEditor {
@@ -109,6 +114,10 @@ func (se *StationEditor) Update(d Director) error {
 		sound.PlayMenuCancel()
 		d.Pop()
 		return nil
+	}
+
+	if se.noticeTimer > 0 {
+		se.noticeTimer--
 	}
 
 	oldGX, oldGY, oldPal := se.cursorGX, se.cursorGY, se.paletteIx
@@ -214,6 +223,7 @@ func (se *StationEditor) tryPlace() bool {
 }
 
 // tryRemove はカーソル位置のパーツを取り外し、PartsInventory に戻す。
+// 機体は最低 1 基スラスタを積む規約のため、最後のスラスタは取り外せない（警告を出す）。
 // 取り外しに成功したら true を返す。
 func (se *StationEditor) tryRemove() bool {
 	i := se.partAtCursor()
@@ -221,10 +231,28 @@ func (se *StationEditor) tryRemove() bool {
 		return false
 	}
 	p := se.player.Parts[i]
+	// 最後の 1 基のスラスタは外せない。
+	if p.Kind() == entity.PartThruster && se.thrusterCount() <= 1 {
+		se.notice = i18n.S().Editor.NeedThruster
+		se.noticeTimer = noticeDurationFrames
+		sound.PlayMenuCancel()
+		return false
+	}
 	se.player.Parts = append(se.player.Parts[:i], se.player.Parts[i+1:]...)
 	se.player.PartsInventory[p.DefID]++
 	se.player.OnPartsChanged()
 	return true
+}
+
+// thrusterCount は現在搭載しているスラスタの数を返す。
+func (se *StationEditor) thrusterCount() int {
+	n := 0
+	for _, p := range se.player.Parts {
+		if p.Kind() == entity.PartThruster {
+			n++
+		}
+	}
+	return n
 }
 
 func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
@@ -261,6 +289,15 @@ func (se *StationEditor) Draw(dst *ebiten.Image, d Director) {
 	se.drawPalette(dst, theme, paletteX, contentY, paletteW)
 
 	ui.DrawText(dst, ed.Hint, 20, float64(sh)-30, 1.3, theme.LineDim)
+
+	// 一時的な警告（スラスタ必須など）はグリッド直下中央に目立つ色で出す。
+	if se.noticeTimer > 0 && se.notice != "" {
+		const noticeScale = 1.6
+		nw, _ := ui.MeasureText(se.notice, noticeScale)
+		ny := contentY + gridPx + 10
+		ui.DrawText(dst, se.notice, (float64(sw)-nw)/2, ny, noticeScale,
+			color.NRGBA{0xff, 0x80, 0x60, 0xff})
+	}
 }
 
 // gridCellPos はグリッド (gx, gy) の左上スクリーン座標を返す。

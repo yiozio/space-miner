@@ -63,6 +63,7 @@ func NewPlayerPebble() *Player {
 			BaseID: ShipBasePebble, // 3x3 ベース。コックピット機能はベースが内包する。
 			Parts: []Part{
 				{DefID: PartIDGunStarter, GX: 0, GY: -1},
+				{DefID: PartIDThrusterStarter, GX: 0, GY: 1}, // 底面中央に標準スラスタ
 			},
 			// 起点 FullMap (Aurora) のステーション位置からスタートする
 			X:     DefaultStationX,
@@ -216,15 +217,13 @@ type thrusterAgg struct {
 }
 
 // thrusterStatsByDir はスラスタ集計を方向別 (前/後/左/右) に返す。
-// Thruster が 1 つも無いときに限り、ベースの非常用スラスタ性能を前向きに使う。
+// 推進はスラスタパーツのみが提供する（機体は最低 1 つスラスタを積む規約）。
 func (p *Player) thrusterStatsByDir() (fwd, bck, lft, rgt thrusterAgg) {
-	hasThruster := false
 	for _, part := range p.Parts {
 		d := part.Def()
 		if d == nil || d.Kind != PartThruster {
 			continue
 		}
-		hasThruster = true
 		switch part.ThrustDir() {
 		case ThrustDirForward:
 			accumulateThruster(&fwd, d)
@@ -235,10 +234,6 @@ func (p *Player) thrusterStatsByDir() (fwd, bck, lft, rgt thrusterAgg) {
 		case ThrustDirRight:
 			accumulateThruster(&rgt, d)
 		}
-	}
-	if !hasThruster {
-		// 非常用ベース推進は前向きのみに与える
-		accumulateThruster(&fwd, ShipBaseDefByID(p.BaseID).EmergencyThrust())
 	}
 	return fwd, bck, lft, rgt
 }

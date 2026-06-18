@@ -1154,12 +1154,10 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 // ブースト・射撃・ドック・ワープも条件を満たすときだけ表示する。
 func (e *Exploration) buildControlsHelp() string {
 	hasFwd, hasBck, hasLft, hasRgt := false, false, false, false
-	hasThruster := false
 	hasGun := false
 	for _, p := range e.player.Parts {
 		switch p.Kind() {
 		case entity.PartThruster:
-			hasThruster = true
 			switch p.ThrustDir() {
 			case entity.ThrustDirForward:
 				hasFwd = true
@@ -1174,10 +1172,7 @@ func (e *Exploration) buildControlsHelp() string {
 			hasGun = true
 		}
 	}
-	// スラスタ未搭載のときは Cockpit が前向きにフォールバックする
-	if !hasThruster {
-		hasFwd = true
-	}
+	// スラスタは最低 1 つ積む規約のため、未搭載時の前向きフォールバックは無し。
 
 	var parts []string
 	thrustKeys := ""

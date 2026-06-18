@@ -268,6 +268,7 @@ type EditorStrings struct {
 	DirBackward   string // "後退"
 	DirRight      string // "右方"
 	DirLeft       string // "左方"
+	NeedThruster  string // スラスタ必須の警告（最後の1基は外せない）
 }
 
 // TavernStrings は酒場 (クエスト掲示板)。

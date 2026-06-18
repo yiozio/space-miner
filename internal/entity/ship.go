@@ -361,10 +361,9 @@ func (s *Ship) DrawAt(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
 
 // 炎アニメーションの調整値（px は元画像＝16x16 基準）。
 const (
-	flameHoldFrames     = 3 // 1 フレームを何 tick 表示するか（小→中→大→中の送り速度）
-	flameOffFrames      = 6 // 停止直後に消火フレーム（炎消）を出す長さ
-	flameAttachPx       = 3 // 炎を噴射口へ食い込ませる量（半透明エッジ 2px + さらに 1px）
-	defaultThrustDropPx = 9 // 非常用（デフォルト）スラスタの炎を下げる量
+	flameHoldFrames = 3 // 1 フレームを何 tick 表示するか（小→中→大→中の送り速度）
+	flameOffFrames  = 6 // 停止直後に消火フレーム（炎消）を出す長さ
+	flameAttachPx   = 3 // 炎を噴射口へ食い込ませる量（半透明エッジ 2px + さらに 1px）
 )
 
 // flameAnimCol は AnimTick から炎フレームのシート列（炎大=0/中=1/小=2）を返す。
@@ -388,8 +387,7 @@ func (s *Ship) TickThrustAnim() {
 }
 
 // thrustEmittersFor は dir のビットに対応する向きのスラスタ（炎を出すパーツ）を返す。
-// Thruster が 1 つも無い場合は Cockpit を非常用エミッタとして返す（前進方向のみ）。
-// プレイヤー機（コックピット非搭載）の非常推進は drawThrust が船体後端から別途描く。
+// 推進はスラスタパーツのみが担うため、該当向きのスラスタが無ければ何も返さない。
 func (s *Ship) thrustEmittersFor(dir ThrustActiveDir) []Part {
 	dirActive := func(d ThrustDir) bool {
 		switch d {
@@ -405,28 +403,15 @@ func (s *Ship) thrustEmittersFor(dir ThrustActiveDir) []Part {
 		return false
 	}
 	var out []Part
-	hasThruster := false
 	for _, p := range s.Parts {
 		if p.Kind() != PartThruster {
 			continue
 		}
-		hasThruster = true
 		if dirActive(p.ThrustDir()) {
 			out = append(out, p)
 		}
 	}
-	if hasThruster {
-		return out
-	}
-	if dir&ThrustActiveForward == 0 {
-		return nil
-	}
-	for _, p := range s.Parts {
-		if p.Kind() == PartCockpit {
-			return []Part{p}
-		}
-	}
-	return nil
+	return out
 }
 
 // drawThrust は点火中のスラスタへ点火スプライトと炎スプライトを重ねて描く。
@@ -460,14 +445,6 @@ func (s *Ship) drawThrust(dst *ebiten.Image, sx, sy float64, off bool) {
 	flameImg := assetimage.Cell(flameCol, 0)
 	firingImg := assetimage.Cell(2, 1) // スラスタ点火セル
 
-	hasThruster := false
-	for _, p := range s.Parts {
-		if p.Kind() == PartThruster {
-			hasThruster = true
-			break
-		}
-	}
-
 	for _, p := range s.thrustEmittersFor(dir) {
 		r := ((p.Rotation % 4) + 4) % 4
 		cxL, cyL := PartLocalCenter(p.GX, p.GY)
@@ -494,14 +471,6 @@ func (s *Ship) drawThrust(dst *ebiten.Image, sx, sy float64, off bool) {
 		fLy := cyL + ryL*(g-overlap)
 		wox, woy := toWorld(fLx, fLy)
 		s.drawWorldSprite(dst, flameImg, sx+wox, sy+woy, g*flameScale, rot)
-	}
-
-	// スラスタ未搭載で前進中は、ベース内蔵スラスタ（底面中央）の非常推進炎を出す。
-	// ベース絵の噴射口がやや下にあるため defaultThrustDropPx ぶん下げる。
-	if !hasThruster && dir&ThrustActiveForward != 0 {
-		_, hHalf := shipHullExtent(s.GridHalf(), g)
-		wox, woy := toWorld(0, hHalf*0.92-overlap+float64(defaultThrustDropPx)*scale)
-		s.drawWorldSprite(dst, flameImg, sx+wox, sy+woy, g*flameScale, s.Angle+math.Pi/2)
 	}
 }
 

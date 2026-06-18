@@ -157,6 +157,7 @@ func newJA() *Strings {
 			StatSpeed:     "速度",
 			StatMax:       "最高",
 			StatBoost:     "ブースト",
+			NeedThruster:  "スラスターは最低 1 基必要です",
 			DirForward:    "前進",
 			DirBackward:   "後退",
 			DirRight:      "右方",

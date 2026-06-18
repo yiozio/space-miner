@@ -6,18 +6,12 @@ package entity
 
 func init() {
 	// Pebble: 初期ベース。3x3 グリッド。
-	// 基礎 HP と非常推進は旧コックピットパーツの値を引き継ぐ（コックピット機能を内包）。
+	// 基礎 HP・積載のみを提供する（推進はスラスタパーツが担う）。
 	registerShipBaseDef(&ShipBaseDef{
-		ID:       ShipBasePebble,
-		GridHalf: 1, // 3x3
-		Price:    0,
-		BaseHP:   PlayerHPDefault, // 100
-		// 旧コックピット相当の最低限の積載・推進。
-		BaseCargo:           15,
-		ThrustAccel:         0.05,
-		ThrustMaxSpeed:      2,
-		ThrustBoostAccelMul: 1.4,
-		ThrustBoostMaxSpeed: 5.0,
-		ThrustBoostFuelCost: 0.10,
+		ID:        ShipBasePebble,
+		GridHalf:  1, // 3x3
+		Price:     0,
+		BaseHP:    PlayerHPDefault, // 100
+		BaseCargo: 15,              // 旧コックピット相当の最低限の積載
 	})
 }

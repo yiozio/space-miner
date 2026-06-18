@@ -20,7 +20,8 @@ const (
 	ShipBasePebble ShipBaseID = iota
 )
 
-// ShipBaseDef は機体ベースの定義。グリッドサイズと基礎ステータス、非常推進性能を持つ。
+// ShipBaseDef は機体ベースの定義。グリッドサイズと基礎ステータスを持つ。
+// 推進はスラスタパーツのみが提供する（機体は最低 1 つスラスタを積む規約）。
 // 将来サイズ違いのベースを追加するときはここに def を増やす（data_shipbases.go）。
 type ShipBaseDef struct {
 	ID       ShipBaseID
@@ -30,26 +31,6 @@ type ShipBaseDef struct {
 	// 基礎ステータス（パーツの合算に加算される土台値）。
 	BaseHP    int     // 基本 HP（Armor の ArmorHP がこれに上乗せ）
 	BaseCargo float64 // 基本積載量（Cargo パーツがこれに上乗せ）
-
-	// 非常用推進。Thruster を 1 つも積んでいないときだけ前進方向に使う
-	// （旧コックピットの最低限スラスタ性能と同じ役割）。
-	ThrustAccel         float64
-	ThrustMaxSpeed      float64
-	ThrustBoostAccelMul float64
-	ThrustBoostMaxSpeed float64
-	ThrustBoostFuelCost float64
-}
-
-// EmergencyThrust は非常用推進性能を PartDef 形に詰めて返す（thrusterStatsByDir で合算に使う）。
-func (b *ShipBaseDef) EmergencyThrust() *PartDef {
-	return &PartDef{
-		Kind:                PartThruster,
-		ThrustAccel:         b.ThrustAccel,
-		ThrustMaxSpeed:      b.ThrustMaxSpeed,
-		ThrustBoostAccelMul: b.ThrustBoostAccelMul,
-		ThrustBoostMaxSpeed: b.ThrustBoostMaxSpeed,
-		ThrustBoostFuelCost: b.ThrustBoostFuelCost,
-	}
 }
 
 var (
