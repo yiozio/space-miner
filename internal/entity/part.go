@@ -77,7 +77,7 @@ func (p Part) ThrustDir() ThrustDir {
 }
 
 // partSpriteCell は Kind に対応するパーツシートのセル (col, row) を返す。
-// シート未収録の Kind（AutoAim・Cockpit）は ok=false で、ベクター描画にフォールバックする。
+// シート未収録の Kind（Cockpit）は ok=false で、ベクター描画にフォールバックする。
 // スラスタはアイドル時のセルを返す（点火時セル・炎は ship.go の推進描画が別途重ねる）。
 func partSpriteCell(kind PartKind) (col, row int, ok bool) {
 	switch kind {
@@ -95,6 +95,8 @@ func partSpriteCell(kind PartKind) (col, row int, ok bool) {
 		return 2, 2, true
 	case PartWarp:
 		return 3, 2, true
+	case PartAutoAim:
+		return 0, 3, true // 左下
 	case PartCargo:
 		return 2, 3, true
 	case PartFuel:
