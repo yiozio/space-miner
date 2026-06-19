@@ -43,6 +43,7 @@ type Exploration struct {
 	player     *entity.Player
 	cameraX    float64
 	cameraY    float64
+	orbitRot   mat3 // 惑星の向き（トラックボール。視点法線→惑星法線）
 	starfield  *starfield
 	asteroids  []*entity.Asteroid
 	bullets    []entity.Bullet
@@ -158,6 +159,7 @@ func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 	e.beepTimer = beepIntervalMinFrames + e.beepRng.Intn(beepIntervalMaxFrames-beepIntervalMinFrames)
 	// オービット・カメラの初期値を自機位置に合わせ、開始時に自機を画面中央へ置く。
 	e.cameraX, e.cameraY = e.player.X, e.player.Y
+	e.orbitRot = mat3Identity()
 	// 各 FullMap の中心にステーションを配置（恒星マップ／ワープ先選択でも参照される）
 	for i := range e.world.Maps {
 		m := &e.world.Maps[i]
@@ -832,6 +834,7 @@ func orbitWrap(d, period float64) float64 {
 // updateOrbitCamera は自機が中央デッドゾーンを越えた分だけカメラをスクロールする。
 // 中央では自機が自由に飛べ、画面端へ押し付けるとその方向へスクロールして惑星の周りを回る。
 func (e *Exploration) updateOrbitCamera() {
+	prevX, prevY := e.cameraX, e.cameraY
 	scx, scy := float64(orbitScreenW)/2, float64(orbitScreenH)/2
 	sx := e.player.X - e.cameraX + scx
 	sy := e.player.Y - e.cameraY + scy
@@ -845,6 +848,17 @@ func (e *Exploration) updateOrbitCamera() {
 	} else if sy > orbitScreenH-orbitMarginY {
 		e.cameraY += sy - (orbitScreenH - orbitMarginY)
 	}
+
+	// スクロールした分の微小回転を惑星の向きに積む。横移動→Y 軸、縦移動→X 軸（上下反転）。
+	// 後ろから積む（M·delta）ことで回転軸が惑星（ボディ）基準になり、極でも「左＝画面Z軸ロール」と
+	// 自機の移動方向どおりに回る（前から積む＝固定軸だと極で自転方向に回ってしまう）。
+	dx, dy := e.cameraX-prevX, e.cameraY-prevY
+	if dx != 0 || dy != 0 {
+		dAngY := dx / orbitLapW * 2 * math.Pi
+		dAngX := -dy / orbitLapH * 2 * math.Pi
+		delta := rotX(dAngX).mul(rotY(dAngY))
+		e.orbitRot = e.orbitRot.mul(delta).orthonormalize()
+	}
 }
 
 // drawOrbitPlanet は現在マップの惑星を (cx, cy)（画面中央）へ固定描画する。
@@ -857,10 +871,8 @@ func (e *Exploration) drawOrbitPlanet(dst *ebiten.Image, cx, cy float64) {
 	body := &e.lastMap.Body
 	if body.Name == "Aurora" {
 		tex := assetimage.Planet3rdFrameAt(e.playtime * planetCloudSpeed)
-		spin := math.Mod(e.cameraX/orbitLapW, 1.0)   // 経度（横スクロール由来）
-		tilt := -e.cameraY / orbitLapH * 2 * math.Pi // 緯度（縦スクロール由来、上下反転）
 		atmo := planetAtmosphere{strength: 0.8, color: [3]float32{0.6, 0.8, 1.0}, outer: 1.07}
-		drawPlanetSphere(dst, tex, cx, cy, orbitPlanetR, spin, tilt, atmo)
+		drawPlanetSphere(dst, tex, cx, cy, orbitPlanetR, e.orbitRot, atmo, true) // 周回: 影も一緒に回す
 		return
 	}
 	drawFlatPlanet(dst, cx, cy, orbitPlanetR, body.Color)
@@ -1326,8 +1338,9 @@ func (e *Exploration) tickWarp() {
 			e.player.VY = 0
 			e.player.ClearTrail() // テレポートで軌跡が伸びないよう消す
 			e.lastMap = dest
-			// 周回ワールド: 行き先マップで自機を画面中央へ。オービット・カメラを再センタリング。
+			// 周回ワールド: 行き先マップで自機を画面中央へ。オービット・カメラと惑星の向きを初期化。
 			e.cameraX, e.cameraY = e.player.X, e.player.Y
+			e.orbitRot = mat3Identity()
 			// ワープ前の局所状態（小惑星・ピックアップ・弾・機雷・ドローン・海賊・着弾・爆発・自動照準）は持ち越さない
 			e.asteroids = e.asteroids[:0]
 			e.pickups = e.pickups[:0]

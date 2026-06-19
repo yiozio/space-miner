@@ -120,9 +120,10 @@ func (bg *titleBackground) draw(dst *ebiten.Image, theme *ui.Theme) {
 	// 惑星は本編と同じ Aurora の自転テクスチャ球（端ほど濃い青白の大気つき）で描く。
 	// アセット未準備のときだけ従来の青い惑星でつなぐ（通常はスプラッシュ中に準備完了）。
 	tex := assetimage.Planet3rdFrameAt(bg.t * planetCloudSpeed)
-	spin := math.Mod(bg.t*planetSpinTurnsPerSec, 1.0)
+	// その場自転（視点固定）: 経度方向の回転のみ。光源は固定（orbitLight=false）。
+	rot := rotY(math.Mod(bg.t*planetSpinTurnsPerSec, 1.0) * 2 * math.Pi)
 	atmo := planetAtmosphere{strength: 0.8, color: [3]float32{0.6, 0.8, 1.0}, outer: 1.07}
-	if !drawPlanetSphere(dst, tex, titlePlanetX, titlePlanetY, titlePlanetR, spin, 0, atmo) {
+	if !drawPlanetSphere(dst, tex, titlePlanetX, titlePlanetY, titlePlanetR, rot, atmo, false) {
 		drawTitlePlanet(dst, titlePlanetX, titlePlanetY, titlePlanetR, titlePlanetColor)
 	}
 	for _, a := range bg.asteroids {
