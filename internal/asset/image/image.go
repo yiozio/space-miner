@@ -63,12 +63,14 @@ const planetTexMaxW = 800
 // PreloadPlanet は惑星アニメの展開をバックグラウンドで開始する（初回表示のカクつき防止）。
 // 重い GIF デコード・合成・縮小（CPU）を別ゴルーチンで行い、完了したら planetReady を立てる。
 // ebiten 画像化（GPU アップロード）はゲームスレッドが Planet3rdFrameAt で遅延・分散実行する。
-// 任意のフレーム数・サイズ・disposal に対応。失敗時は ready のままにして平面描画へフォールバック。
+// 任意のフレーム数・サイズ・disposal に対応。失敗時も ready を立てて待機側を解除する（惑星は非表示）。
 func PreloadPlanet() {
 	planetLoadOnce.Do(func() {
 		go func() {
 			g, err := gif.DecodeAll(bytes.NewReader(planet3rdGIF))
 			if err != nil {
+				// 失敗してもスプラッシュ等の待機を解除するため ready にする（惑星は描画されない）。
+				planetReady.Store(true)
 				return
 			}
 			canvas := stdimage.NewRGBA(stdimage.Rect(0, 0, g.Config.Width, g.Config.Height))

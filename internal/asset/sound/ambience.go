@@ -2,6 +2,7 @@ package sound
 
 import (
 	"bytes"
+	"io"
 	"log"
 
 	_ "embed"
@@ -85,12 +86,22 @@ func PlayGameBGM() {
 	}
 	StopBGM()
 	ctx := Context()
-	s, err := wav.DecodeF32(bytes.NewReader(spaceNoiseWAV))
-	if err != nil {
-		log.Printf("sound: decode game bgm: %v", err)
-		return
+	// 事前デコード済みバッファがあれば即再生（デコード待ちなし）。無ければその場でデコード。
+	var src io.ReadSeeker
+	var length int64
+	if gameBGMPCM != nil {
+		src = bytes.NewReader(gameBGMPCM)
+		length = int64(len(gameBGMPCM))
+	} else {
+		s, err := wav.DecodeF32(bytes.NewReader(spaceNoiseWAV))
+		if err != nil {
+			log.Printf("sound: decode game bgm: %v", err)
+			return
+		}
+		src = s
+		length = s.Length()
 	}
-	loop := audio.NewInfiniteLoopF32(s, s.Length())
+	loop := audio.NewInfiniteLoopF32(src, length)
 	p, err := ctx.NewPlayerF32(loop)
 	if err != nil {
 		log.Printf("sound: game bgm player: %v", err)
@@ -117,12 +128,19 @@ func StopBGM() {
 // startTitleClip はタイトル BGM の mp3 を 1 回ストリーミング再生する。
 func startTitleClip() {
 	ctx := Context()
-	s, err := mp3.DecodeF32(bytes.NewReader(cosmicNoiseMP3))
-	if err != nil {
-		log.Printf("sound: decode title bgm: %v", err)
-		return
+	// 事前デコード済みバッファがあれば即再生（デコード待ちなし）。無ければその場でデコード。
+	var src io.Reader
+	if titleBGMPCM != nil {
+		src = bytes.NewReader(titleBGMPCM)
+	} else {
+		s, err := mp3.DecodeF32(bytes.NewReader(cosmicNoiseMP3))
+		if err != nil {
+			log.Printf("sound: decode title bgm: %v", err)
+			return
+		}
+		src = s
 	}
-	p, err := ctx.NewPlayerF32(s)
+	p, err := ctx.NewPlayerF32(src)
 	if err != nil {
 		log.Printf("sound: title bgm player: %v", err)
 		return
