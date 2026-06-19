@@ -33,8 +33,6 @@ const (
 	collisionDamageThreshold = 1.0 // この相対速度未満ではダメージなし
 	collisionDamageFactor    = 3.0 // 相対速度1あたりのダメージ
 	collisionRestitution     = 0.6 // バウンスのエネルギー保持率
-	// ゾーン中心へ寄せる初速。漂流上限の範囲内に収まる小さな値。
-	asteroidInboundDrift = 0.2
 )
 
 // Exploration は探索画面シーン。
@@ -178,6 +176,7 @@ func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 	e.cameraX, e.cameraY = 0, 0
 	e.orbitRot = mat3Identity()
 	e.stationVN = [3]float64{0, 0, 1}
+	e.maintainAsteroids() // 惑星全体に一様分布で小惑星を満たす
 	return e
 }
 
@@ -363,10 +362,13 @@ func (e *Exploration) droneAttack(d *entity.Drone) {
 	}
 }
 
-// 周回ワールドの不定期スポーン上限（ゾーン制を撤去し、常時どこでも湧く）。
+// 周回ワールドのスポーン量。小惑星は惑星全体（球面）に一様分布で常時この数を維持する。
 const (
-	orbitAsteroidCap = 14
+	orbitAsteroidCap = 100
 	orbitPirateCap   = 4
+	// 裏側（ビュー法線 z<=0）の小惑星に与える画面外センチネル座標。
+	// これで描画・当たり判定・狙い撃ち等の距離/位置判定から自然に除外される。
+	orbitBehindX = 1e7
 )
 
 // orbitPiratePatterns は出現候補の海賊パターン。
@@ -403,32 +405,48 @@ func (e *Exploration) trySpawnPirate() {
 	}
 }
 
-// trySpawnAsteroid は上限未満なら小惑星を 1 つ、自機周囲のリング上に出現させる（ゾーン非依存）。
-func (e *Exploration) trySpawnAsteroid() {
-	if len(e.asteroids) >= orbitAsteroidCap {
-		return
+// maintainAsteroids は惑星全体（球面）に一様分布した小惑星を常に orbitAsteroidCap 個に保つ。
+// 破壊（採掘し尽くし）で減ったぶんを、ランダムな球面位置へ補充する。
+func (e *Exploration) maintainAsteroids() {
+	for len(e.asteroids) < orbitAsteroidCap {
+		if !e.spawnSphereAsteroid() {
+			break // 素材分布が無い等で生成できないときは打ち切る（無限ループ防止）
+		}
 	}
-	// 素材は現在の区画（惑星）ごとの素材分布から抽選する。分布が無ければ生成しない。
+}
+
+// spawnSphereAsteroid は惑星球面の一様ランダム方向に小惑星を 1 つ生成する。
+func (e *Exploration) spawnSphereAsteroid() bool {
 	if e.lastMap == nil {
-		return
+		return false
 	}
 	res, ok := e.lastMap.PickResource(e.spawnRng)
 	if !ok {
-		return
+		return false
 	}
-	ang := e.spawnRng.Float64() * math.Pi * 2
-	dist := asteroidSpawnRingMin + e.spawnRng.Float64()*(asteroidSpawnRingMax-asteroidSpawnRingMin)
-	x := e.player.X + math.Cos(ang)*dist
-	y := e.player.Y + math.Sin(ang)*dist
+	// 球面一様サンプリング（z を一様、方位角を一様に取る）。
+	z := 2*e.spawnRng.Float64() - 1
+	t := 2 * math.Pi * e.spawnRng.Float64()
+	r := math.Sqrt(1 - z*z)
+	vn := [3]float64{r * math.Cos(t), r * math.Sin(t), z}
 	size := asteroidMinSize + e.spawnRng.Intn(asteroidMaxSize-asteroidMinSize+1)
-	a := entity.NewAsteroid(e.spawnRng.Int63(), x, y, size, res)
-	// 生成直後にプレイヤー方向へ軽く寄せ、視界へ流入してくる挙動を作る
-	toX, toY := e.player.X-x, e.player.Y-y
-	if d := math.Hypot(toX, toY); d > 0 {
-		a.VX += (toX / d) * asteroidInboundDrift
-		a.VY += (toY / d) * asteroidInboundDrift
-	}
+	a := entity.NewAsteroid(e.spawnRng.Int63(), 0, 0, size, res)
+	a.VX, a.VY = 0, 0 // 球面に固定（位置は Vn から毎フレーム決まる）。自転は維持。
+	a.Vn = vn
+	e.setAsteroidScreen(a)
 	e.asteroids = append(e.asteroids, a)
+	return true
+}
+
+// setAsteroidScreen は小惑星のビュー法線 Vn から画面オフセット (X,Y) を更新する。
+// 裏側（z<=0）は画面外センチネルに置き、各種判定から除外する。
+func (e *Exploration) setAsteroidScreen(a *entity.Asteroid) {
+	if a.Vn[2] > 0 {
+		a.X = a.Vn[0] * orbitProjR
+		a.Y = a.Vn[1] * orbitProjR
+	} else {
+		a.X, a.Y = orbitBehindX, orbitBehindX
+	}
 }
 
 // playDamageSound はシールドの有無で被ダメージ音を出し分ける。
@@ -550,8 +568,8 @@ func (e *Exploration) Update(d Director) error {
 	// 周回ワールドでは現在マップは状態として持つ（自機は周回で座標が伸びるため位置からは判定しない）。
 	// lastMap は初期化時とワープ時にのみ更新する。
 
-	// 不定期スポーン（フレームあたり最大 1 体）
-	e.trySpawnAsteroid()
+	// 小惑星は惑星全体に一様分布で常時 orbitAsteroidCap 個を維持（破壊分を球面ランダムへ補充）。
+	e.maintainAsteroids()
 	e.trySpawnPirate()
 
 	// 小惑星の浮遊・自転
@@ -764,13 +782,11 @@ func (e *Exploration) Update(d Director) error {
 	// AutoAim パーツによる継続ダメージ（ビームの描画情報も生成）
 	e.applyAutoAim()
 
-	// 空・遠方の小惑星を除去（遠方は再生成に任せ、ミニマップ外で滞留させない）
+	// 採掘し尽くした（空）小惑星のみ除去。減ったぶんは maintainAsteroids が球面ランダムへ補充する。
+	// 球面に固定された惑星全体の分布なので、距離によるカルはしない。
 	na := 0
 	for _, a := range e.asteroids {
 		if a.Empty() {
-			continue
-		}
-		if math.Hypot(a.X-e.player.X, a.Y-e.player.Y) > asteroidCullDist {
 			continue
 		}
 		e.asteroids[na] = a
@@ -924,8 +940,10 @@ func (e *Exploration) transformOrbitObjects(dt mat3) {
 	for i := range e.player.Trail {
 		e.player.Trail[i].X, e.player.Trail[i].Y = xf(e.player.Trail[i].X, e.player.Trail[i].Y)
 	}
+	// 小惑星は惑星全体（球面）に分布するので、完全な 3D ビュー法線で正確に回す（裏側も保持）。
 	for _, a := range e.asteroids {
-		a.X, a.Y = xf(a.X, a.Y)
+		a.Vn = dt.mulVec(a.Vn)
+		e.setAsteroidScreen(a)
 	}
 	for _, pr := range e.pirates {
 		pr.X, pr.Y = xf(pr.X, pr.Y)
@@ -1127,9 +1145,16 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 		}
 	}
 
-	// 小惑星
+	// 小惑星（惑星全体に分布。裏側 z<=0 は隠れ、画面外は描かない）
 	for _, a := range e.asteroids {
-		a.Draw(dst, a.X-e.cameraX+cx, a.Y-e.cameraY+cy)
+		if a.Vn[2] <= 0 {
+			continue
+		}
+		sx, sy := a.X-e.cameraX+cx, a.Y-e.cameraY+cy
+		if sx < -120 || sx > float64(sw)+120 || sy < -120 || sy > float64(sh)+120 {
+			continue
+		}
+		a.Draw(dst, sx, sy)
 	}
 
 	// 海賊（赤アクセントの船体 + 識別リング）。軌跡を船体の下に描く。
@@ -1464,6 +1489,7 @@ func (e *Exploration) tickWarp() {
 			e.autoAimTarget = nil
 			e.autoAimGridIdx = -1
 			e.autoAimDmgAcc = 0
+			e.maintainAsteroids() // 行き先マップの惑星全体に小惑星を満たす
 		}
 	}
 

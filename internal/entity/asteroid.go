@@ -27,8 +27,9 @@ type AsteroidGrid struct {
 type Asteroid struct {
 	X, Y       float64
 	VX, VY     float64
-	Angle      float64 // 自転角（ラジアン）
-	AngularVel float64 // 自転速度（rad/frame）
+	Angle      float64    // 自転角（ラジアン）
+	AngularVel float64    // 自転速度（rad/frame）
+	Vn         [3]float64 // 周回ワールドでの惑星上の固定方向（ビュー法線。毎フレーム回転で更新）
 	Grids      []AsteroidGrid
 }
 
