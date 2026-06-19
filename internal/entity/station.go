@@ -12,8 +12,8 @@ import (
 
 const (
 	StationBodyRadius = 80
-	StationDockRange  = 130 // ドック中心からこの距離以内なら接岸可能
-	stationDockOffset = StationBodyRadius + 50
+	StationDockRange  = 130                    // ドック中心からこの距離以内なら接岸可能
+	StationDockOffset = StationBodyRadius + 50 // 本体中心から東側ドック ⊃ までの距離
 )
 
 // Station は宇宙ステーション。当たり判定はなく、背景として存在するのみ。
@@ -31,7 +31,7 @@ func NewStation(name string, x, y float64) *Station {
 }
 
 // DockX, DockY はドック中心のワールド座標。
-func (s *Station) DockX() float64 { return s.X + stationDockOffset }
+func (s *Station) DockX() float64 { return s.X + StationDockOffset }
 func (s *Station) DockY() float64 { return s.Y }
 
 // IsPlayerInDock は (px, py) がドック判定範囲内にあるかを返す。
@@ -60,7 +60,7 @@ func (s *Station) Draw(dst *ebiten.Image, sx, sy float64, theme *ui.Theme) {
 
 	// 連結アーム (本体 → ドック)
 	armOffsetY := float32(14)
-	dockX := cx + float32(stationDockOffset)
+	dockX := cx + float32(StationDockOffset)
 	dockY := cy
 	vector.StrokeLine(dst, cx+bodyR*0.7, dockY-armOffsetY, dockX-17, dockY-armOffsetY, 1, theme.Line, false)
 	vector.StrokeLine(dst, cx+bodyR*0.7, dockY+armOffsetY, dockX-17, dockY+armOffsetY, 1, theme.Line, false)

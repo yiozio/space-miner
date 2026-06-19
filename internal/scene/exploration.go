@@ -607,7 +607,11 @@ func (e *Exploration) Update(d Director) error {
 		if e.lastMap == nil || !e.lastMap.Contains(s.X, s.Y) {
 			continue
 		}
-		if e.activeDock == nil && e.stationVN[2] > orbitDockMinZ {
+		// 接岸位置は本体中心ではなく東側のドック ⊃（StationDockOffset ぶん右）。
+		// 自機（画面中央）からドックまでの距離が範囲内かつ手前(z>0)なら接岸可能。
+		dockX := e.stationVN[0]*orbitProjR + entity.StationDockOffset
+		dockY := e.stationVN[1] * orbitProjR
+		if e.activeDock == nil && e.stationVN[2] > 0 && math.Hypot(dockX, dockY) < orbitDockRange {
 			e.activeDock = s
 		}
 	}
@@ -855,8 +859,9 @@ const (
 	orbitLapH = 10000
 	// 中央に固定描画する Aurora 惑星の半径（px）。
 	orbitPlanetR = 250
-	// ステーション接岸可能となるビュー法線 z の下限（真上付近で接岸）。
-	orbitDockMinZ = 0.85
+	// ステーション接岸範囲（画面px、描画と同じ orbitProjR スケール）。
+	// ステーションの画面オフセットがこれ以内かつ手前（z>0）なら接岸可能。
+	orbitDockRange = 84
 )
 
 // orbitProjR はオブジェクトの球面射影半径（px）。自機中心からのオフセット = ビュー法線×orbitProjR。
