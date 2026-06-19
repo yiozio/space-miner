@@ -88,13 +88,7 @@ func DefaultWorld() *World {
 						},
 					},
 				},
-				PirateZones: []PirateZone{
-					// 起点 FullMap には弱めの Scout 出没エリアを 1 つだけ
-					{
-						CX: auroraX - 18000, CY: auroraY - 14000, Radius: 6000, MaxPirates: 2,
-						Patterns: []PiratePatternID{PiratePatternScout},
-					},
-				},
+				// 起点 Aurora は安全地帯（敵は出さない）。PirateZones なし。
 			},
 			{
 				Name: "Tinker",

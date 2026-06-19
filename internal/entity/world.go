@@ -177,6 +177,37 @@ func (w *World) PickPiratePattern(x, y float64, rng *rand.Rand) (PiratePatternID
 	return pool[rng.Intn(len(pool))], true
 }
 
+// HasPirates はこの区画に海賊が出現するか（PirateZones が定義されているか）を返す。
+// 周回ワールドでは位置に依らずゾーンの有無を「敵が出る区画か」の判定に使う（Aurora は無し）。
+func (m *FullMap) HasPirates() bool { return len(m.PirateZones) > 0 }
+
+// PickResource はこの区画の全ゾーンの素材比率を位置に依らず合算した分布から、
+// 1 素材を重み付きで抽選する。区画ごとに異なる素材構成になる。素材が無ければ ok=false。
+func (m *FullMap) PickResource(rng *rand.Rand) (ResourceType, bool) {
+	var weights [resourceCount]float64
+	total := 0.0
+	for i := range m.Zones {
+		for _, mw := range m.Zones[i].Mix {
+			weights[mw.Resource] += mw.Weight
+			total += mw.Weight
+		}
+	}
+	if total <= 0 {
+		return 0, false
+	}
+	r := rng.Float64() * total
+	for i := 0; i < int(resourceCount); i++ {
+		if weights[i] <= 0 {
+			continue
+		}
+		r -= weights[i]
+		if r <= 0 {
+			return ResourceType(i), true
+		}
+	}
+	return ResourceType(resourceCount - 1), true
+}
+
 // PickResource は (x, y) を含む FullMap のゾーン群から、
 // フォールオフ込みの重みを合算して素材を抽選する。
 // 区画外・全ゾーン外なら ok=false。

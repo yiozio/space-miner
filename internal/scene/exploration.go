@@ -157,20 +157,21 @@ func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 		beepRng:        rand.New(rand.NewSource(4)),
 	}
 	e.beepTimer = beepIntervalMinFrames + e.beepRng.Intn(beepIntervalMaxFrames-beepIntervalMinFrames)
-	// オービット・カメラの初期値を自機位置に合わせ、開始時に自機を画面中央へ置く。
-	e.cameraX, e.cameraY = e.player.X, e.player.Y
-	e.orbitRot = mat3Identity()
 	// 各 FullMap の中心にステーションを配置（恒星マップ／ワープ先選択でも参照される）
 	for i := range e.world.Maps {
 		m := &e.world.Maps[i]
 		e.stations = append(e.stations, entity.NewStation(m.Name, m.CX, m.CY))
 	}
-	// 開始時点でいる FullMap を記録。区画外なら最寄マップを採用し、
-	// lastMap が nil にならないようにする（区画外でも最後／最寄のマップを表示できる）。
+	// 開始時点でいる FullMap を記録（自機の元座標で判定）。区画外なら最寄マップを採用。
 	e.lastMap = e.world.Containing(e.player.X, e.player.Y)
 	if e.lastMap == nil {
 		e.lastMap = e.world.NearestMap(e.player.X, e.player.Y)
 	}
+	// オービット・カメラの初期値を自機位置に合わせ、座標を周回周期へ折り返す。
+	// 起点 Aurora は周期の整数倍なので、折り返し後の自機は (0,0) から始まる。
+	e.cameraX, e.cameraY = e.player.X, e.player.Y
+	e.orbitRot = mat3Identity()
+	e.recenterOrbit()
 	return e
 }
 
@@ -369,6 +370,10 @@ var orbitPiratePatterns = []entity.PiratePatternID{
 
 // trySpawnPirate は上限未満なら確率で海賊を 1 体、自機周囲のリング上に出現させる（ゾーン非依存）。
 func (e *Exploration) trySpawnPirate() {
+	// 安全地帯（PirateZones を持たない区画＝Aurora）では敵を出さない。
+	if e.lastMap == nil || !e.lastMap.HasPirates() {
+		return
+	}
 	if len(e.pirates) >= orbitPirateCap {
 		return
 	}
@@ -397,11 +402,18 @@ func (e *Exploration) trySpawnAsteroid() {
 	if len(e.asteroids) >= orbitAsteroidCap {
 		return
 	}
+	// 素材は現在の区画（惑星）ごとの素材分布から抽選する。分布が無ければ生成しない。
+	if e.lastMap == nil {
+		return
+	}
+	res, ok := e.lastMap.PickResource(e.spawnRng)
+	if !ok {
+		return
+	}
 	ang := e.spawnRng.Float64() * math.Pi * 2
 	dist := asteroidSpawnRingMin + e.spawnRng.Float64()*(asteroidSpawnRingMax-asteroidSpawnRingMin)
 	x := e.player.X + math.Cos(ang)*dist
 	y := e.player.Y + math.Sin(ang)*dist
-	res := entity.AllResourceTypes()[e.spawnRng.Intn(len(entity.AllResourceTypes()))]
 	size := asteroidMinSize + e.spawnRng.Intn(asteroidMaxSize-asteroidMinSize+1)
 	a := entity.NewAsteroid(e.spawnRng.Int63(), x, y, size, res)
 	// 生成直後にプレイヤー方向へ軽く寄せ、視界へ流入してくる挙動を作る
@@ -799,6 +811,8 @@ func (e *Exploration) Update(d Director) error {
 
 	// オービット・カメラ（中央デッドゾーン外のはみ出し分だけスクロール＝惑星が回る）
 	e.updateOrbitCamera()
+	// 周回周期を超えたらワールドを折り返して座標を [0, 周期) に保つ（1周で (0,0) に戻る）。
+	e.recenterOrbit()
 	return nil
 }
 
@@ -858,6 +872,74 @@ func (e *Exploration) updateOrbitCamera() {
 		dAngX := -dy / orbitLapH * 2 * math.Pi
 		delta := rotX(dAngX).mul(rotY(dAngY))
 		e.orbitRot = e.orbitRot.mul(delta).orthonormalize()
+	}
+}
+
+// recenterOrbit はオービット座標 (cameraX/Y) が周回周期 [0, orbitLapW/H) を外れたら、
+// ワールド全体（自機・カメラ・コンテンツ）を 1 周ぶんまとめてシフトして折り返す（フローティング原点）。
+// これで座標が無限に伸びず、初期 (0,0) から始めて 1 周回ると座標が (0,0) に戻る。
+// 全要素を同じだけ動かすので相対位置は不変＝描画・当たり判定はそのまま。
+// ステーションは固定ランドマークとしてシフトせず、orbitWrap で最寄り像に描く。
+func (e *Exploration) recenterOrbit() {
+	dx := -orbitLapW * math.Floor(e.cameraX/orbitLapW)
+	dy := -orbitLapH * math.Floor(e.cameraY/orbitLapH)
+	if dx == 0 && dy == 0 {
+		return
+	}
+	e.shiftWorld(dx, dy)
+}
+
+// shiftWorld はワールド座標を持つ全要素を (dx, dy) 平行移動する（フローティング原点用）。
+func (e *Exploration) shiftWorld(dx, dy float64) {
+	e.cameraX += dx
+	e.cameraY += dy
+	e.player.X += dx
+	e.player.Y += dy
+	for i := range e.player.Trail {
+		e.player.Trail[i].X += dx
+		e.player.Trail[i].Y += dy
+	}
+	for _, a := range e.asteroids {
+		a.X += dx
+		a.Y += dy
+	}
+	for _, pr := range e.pirates {
+		pr.X += dx
+		pr.Y += dy
+		for i := range pr.Trail {
+			pr.Trail[i].X += dx
+			pr.Trail[i].Y += dy
+		}
+	}
+	for i := range e.bullets {
+		e.bullets[i].X += dx
+		e.bullets[i].Y += dy
+	}
+	for i := range e.mines {
+		e.mines[i].X += dx
+		e.mines[i].Y += dy
+	}
+	for i := range e.drones {
+		e.drones[i].X += dx
+		e.drones[i].Y += dy
+	}
+	for i := range e.pickups {
+		e.pickups[i].X += dx
+		e.pickups[i].Y += dy
+	}
+	for i := range e.impacts {
+		e.impacts[i].X += dx
+		e.impacts[i].Y += dy
+	}
+	for i := range e.explosions {
+		e.explosions[i].X += dx
+		e.explosions[i].Y += dy
+	}
+	for i := range e.beams {
+		e.beams[i].X1 += dx
+		e.beams[i].Y1 += dy
+		e.beams[i].X2 += dx
+		e.beams[i].Y2 += dy
 	}
 }
 
@@ -1341,6 +1423,7 @@ func (e *Exploration) tickWarp() {
 			// 周回ワールド: 行き先マップで自機を画面中央へ。オービット・カメラと惑星の向きを初期化。
 			e.cameraX, e.cameraY = e.player.X, e.player.Y
 			e.orbitRot = mat3Identity()
+			e.recenterOrbit() // 座標を周回周期 [0, 周期) に折り返す
 			// ワープ前の局所状態（小惑星・ピックアップ・弾・機雷・ドローン・海賊・着弾・爆発・自動照準）は持ち越さない
 			e.asteroids = e.asteroids[:0]
 			e.pickups = e.pickups[:0]
