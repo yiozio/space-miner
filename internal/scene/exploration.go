@@ -517,12 +517,10 @@ func (e *Exploration) Update(d Director) error {
 	}
 	e.playtime += 1.0 / 60.0 // ebitengine 既定 TPS（60）想定の累計プレイ時間
 
-	// 現在いる FullMap を更新（区画外なら直前の値を保持）
-	if m := e.world.Containing(e.player.X, e.player.Y); m != nil {
-		e.lastMap = m
-	}
+	// 周回ワールドでは現在マップは状態として持つ（自機は周回で座標が伸びるため位置からは判定しない）。
+	// lastMap は初期化時とワープ時にのみ更新する。
 
-	// ゾーンに応じた小惑星のスポーン（フレームあたり最大 1 体）
+	// 不定期スポーン（フレームあたり最大 1 体）
 	e.trySpawnAsteroid()
 	e.trySpawnPirate()
 
@@ -556,7 +554,10 @@ func (e *Exploration) Update(d Director) error {
 	e.activeDock = nil
 	for _, s := range e.stations {
 		s.Update()
-		if e.activeDock == nil && s.IsPlayerInDock(e.player.X, e.player.Y) {
+		// 周回ラップを考慮した自機位置でドック判定（1周回ってきても接岸できる）。
+		px := s.X + orbitWrap(e.player.X-s.X, orbitLapW)
+		py := s.Y + orbitWrap(e.player.Y-s.Y, orbitLapH)
+		if e.activeDock == nil && s.IsPlayerInDock(px, py) {
 			e.activeDock = s
 		}
 	}
@@ -808,11 +809,25 @@ const (
 	orbitMarginX = 140
 	orbitMarginY = 120
 	// 周回1周ぶんのカメラ移動量（px）。これだけ動くと惑星が360°回って元の向きに戻る。
-	orbitLapW = 5000
-	orbitLapH = 5000
+	// 近景星レイヤー（タイル1000・パララックス0.10）が 1 周でちょうど整数タイル分流れて
+	// 元に戻るよう、10000 の倍数にしている（星空も惑星も1周で同じ景色に戻る）。
+	orbitLapW = 10000
+	orbitLapH = 10000
 	// 中央に固定描画する Aurora 惑星の半径（px）。
 	orbitPlanetR = 250
 )
+
+// orbitWrap は周回方向の差分 d を [-period/2, period/2) に折り返す（トーラス状ラップ）。
+// 固定ランドマーク（ステーション）が1周で元の位置へ戻るための写像に使う。
+func orbitWrap(d, period float64) float64 {
+	d = math.Mod(d, period)
+	if d < -period/2 {
+		d += period
+	} else if d >= period/2 {
+		d -= period
+	}
+	return d
+}
 
 // updateOrbitCamera は自機が中央デッドゾーンを越えた分だけカメラをスクロールする。
 // 中央では自機が自由に飛べ、画面端へ押し付けるとその方向へスクロールして惑星の周りを回る。
@@ -832,14 +847,40 @@ func (e *Exploration) updateOrbitCamera() {
 	}
 }
 
-// drawAuroraOrbit は Aurora 惑星を (cx, cy)（画面中央）へ固定描画し、オービット・カメラの
-// スクロール量を経度(横)・緯度(縦)の回転へ写像する。1周(orbitLapW/H)で元の向きに戻る。
-func (e *Exploration) drawAuroraOrbit(dst *ebiten.Image, cx, cy float64) {
-	tex := assetimage.Planet3rdFrameAt(e.playtime * planetCloudSpeed)
-	spin := math.Mod(e.cameraX/orbitLapW, 1.0)  // 経度（横スクロール由来）
-	tilt := e.cameraY / orbitLapH * 2 * math.Pi // 緯度（縦スクロール由来）
-	atmo := planetAtmosphere{strength: 0.8, color: [3]float32{0.6, 0.8, 1.0}, outer: 1.07}
-	drawPlanetSphere(dst, tex, cx, cy, orbitPlanetR, spin, tilt, atmo)
+// drawOrbitPlanet は現在マップの惑星を (cx, cy)（画面中央）へ固定描画する。
+// Aurora はテクスチャ球で、オービット・カメラのスクロール量を経度(横)・緯度(縦)の回転へ
+// 写像する（1周 orbitLapW/H で元の向きに戻る）。それ以外のマップはフラットな円で描く。
+func (e *Exploration) drawOrbitPlanet(dst *ebiten.Image, cx, cy float64) {
+	if e.lastMap == nil {
+		return
+	}
+	body := &e.lastMap.Body
+	if body.Name == "Aurora" {
+		tex := assetimage.Planet3rdFrameAt(e.playtime * planetCloudSpeed)
+		spin := math.Mod(e.cameraX/orbitLapW, 1.0)   // 経度（横スクロール由来）
+		tilt := -e.cameraY / orbitLapH * 2 * math.Pi // 緯度（縦スクロール由来、上下反転）
+		atmo := planetAtmosphere{strength: 0.8, color: [3]float32{0.6, 0.8, 1.0}, outer: 1.07}
+		drawPlanetSphere(dst, tex, cx, cy, orbitPlanetR, spin, tilt, atmo)
+		return
+	}
+	drawFlatPlanet(dst, cx, cy, orbitPlanetR, body.Color)
+}
+
+// drawFlatPlanet は陰影付きのフラットな惑星円を描く（テクスチャ非対応マップ用）。
+func drawFlatPlanet(dst *ebiten.Image, cx, cy, r float64, base color.NRGBA) {
+	scx, scy, sr := float32(cx), float32(cy), float32(r)
+	dark := scaleColor(base, 0.9)
+	dark.A = 255
+	vector.FillCircle(dst, scx, scy, sr, dark, true)
+	lit := base
+	lit.A = 255
+	vector.FillCircle(dst, scx-sr*0.15, scy-sr*0.15, sr*0.78, lit, true)
+	hi := scaleColor(base, 1.35)
+	hi.A = 220
+	vector.FillCircle(dst, scx-sr*0.42, scy-sr*0.42, sr*0.2, hi, true)
+	rim := scaleColor(base, 0.7)
+	rim.A = 255
+	vector.StrokeCircle(dst, scx, scy, sr, 1.0, rim, true)
 }
 
 // handlePlayerAsteroidCollisions は自機の当たり判定矩形（OBB）と各小惑星グリッド（円）を
@@ -963,12 +1004,13 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 
 	e.starfield.draw(dst, e.cameraX, e.cameraY, theme)
 
-	// 周回ワールド: Aurora の惑星を画面中央に固定し、オービット・カメラに応じて2軸回転させる。
-	e.drawAuroraOrbit(dst, cx, cy)
+	// 周回ワールド: 現在マップの惑星を画面中央に固定描画（Aurora は2軸回転、他はフラット）。
+	e.drawOrbitPlanet(dst, cx, cy)
 
 	// 宇宙ステーション（背景扱い）
 	for _, s := range e.stations {
-		s.Draw(dst, s.X-e.cameraX+cx, s.Y-e.cameraY+cy, theme)
+		// ステーションは固定ランドマークなので周回ラップで最寄りの像に描く（1周で戻る）。
+		s.Draw(dst, orbitWrap(s.X-e.cameraX, orbitLapW)+cx, orbitWrap(s.Y-e.cameraY, orbitLapH)+cy, theme)
 	}
 
 	// 小惑星
@@ -1165,8 +1207,8 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		if e.lastMap == nil || !e.lastMap.Contains(s.X, s.Y) {
 			continue
 		}
-		nx := mcx + float32((s.X-e.cameraX)*minimapScale)
-		ny := mcy + float32((s.Y-e.cameraY)*minimapScale)
+		nx := mcx + float32(orbitWrap(s.X-e.cameraX, orbitLapW)*minimapScale)
+		ny := mcy + float32(orbitWrap(s.Y-e.cameraY, orbitLapH)*minimapScale)
 		if nx >= mx && nx <= mx+miniW && ny >= my && ny <= my+miniH {
 			vector.StrokeRect(dst, nx-3, ny-3, 6, 6, 1, theme.Line, false)
 			continue
@@ -1284,6 +1326,8 @@ func (e *Exploration) tickWarp() {
 			e.player.VY = 0
 			e.player.ClearTrail() // テレポートで軌跡が伸びないよう消す
 			e.lastMap = dest
+			// 周回ワールド: 行き先マップで自機を画面中央へ。オービット・カメラを再センタリング。
+			e.cameraX, e.cameraY = e.player.X, e.player.Y
 			// ワープ前の局所状態（小惑星・ピックアップ・弾・機雷・ドローン・海賊・着弾・爆発・自動照準）は持ち越さない
 			e.asteroids = e.asteroids[:0]
 			e.pickups = e.pickups[:0]
