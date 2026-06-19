@@ -23,12 +23,12 @@ import (
 const (
 	asteroidMinSize = 4
 	asteroidMaxSize = 10
-	// ミニマップが映す半径は 180/2/0.06=1500px だが、対角線方向の角は ~2120px まで届く。
-	// 角にも掛からないよう、生成リングはこれより外側で取る。
-	asteroidSpawnRingMin = 2200.0
-	asteroidSpawnRingMax = 3000.0
-	// プレイヤーから十分離れた小惑星は破棄し、再生成に任せる。
-	asteroidCullDist         = 4000.0
+	// 周回ワールドのオブジェクトは自機中心オフセット（=ビュー法線×orbitProjR）で持つ。
+	// 生成は画面外〜手前半球内、破棄は手前半球の縁（orbitProjR 未満）で行う。
+	asteroidSpawnRingMin = 700.0
+	asteroidSpawnRingMax = 1200.0
+	// 手前半球の縁付近まで来た小惑星は破棄し、再生成に任せる（orbitProjR≈1591 未満）。
+	asteroidCullDist         = 1450.0
 	minimapScale             = 0.06
 	collisionDamageThreshold = 1.0 // この相対速度未満ではダメージなし
 	collisionDamageFactor    = 3.0 // 相対速度1あたりのダメージ
@@ -41,9 +41,14 @@ const (
 // プレイヤー機を中心に俯瞰描画し、小惑星・弾・資源ピックアップ・ステーションを管理する。
 type Exploration struct {
 	player     *entity.Player
-	cameraX    float64
+	cameraX    float64 // 周回ワールドでは常に 0（オブジェクトは自機中心オフセットで保持）
 	cameraY    float64
-	orbitRot   mat3 // 惑星の向き（トラックボール。視点法線→惑星法線）
+	orbitRot   mat3    // 惑星の向き（トラックボール。視点法線→惑星法線）
+	orbitDX    float64 // 当該フレームの自機移動量（速度由来。惑星回転と全オブジェクト変換に使う）
+	orbitDY    float64
+	skyX       float64 // 星空スクロール用の累積移動量（背景パララックス専用）
+	skyY       float64
+	stationVN  [3]float64 // 現在マップのホーム・ステーションのビュー法線（惑星と一緒に回り裏へ隠れる）
 	starfield  *starfield
 	asteroids  []*entity.Asteroid
 	bullets    []entity.Bullet
@@ -167,11 +172,12 @@ func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 	if e.lastMap == nil {
 		e.lastMap = e.world.NearestMap(e.player.X, e.player.Y)
 	}
-	// 周回ワールドでは現在マップのステーション位置（orbit 原点 = 経度0/緯度0）から始める。
-	// 全マップ中心は周期の整数倍なので、自機 (0,0) でステーションは画面中央＝接岸状態になる。
+	// 周回ワールドでは自機は常に中央。ホーム・ステーションは惑星の正面 (0,0,1) から始まり、
+	// 周回すると惑星と一緒に回って裏へ隠れ、真上に戻ると接岸できる。
 	e.player.X, e.player.Y = 0, 0
 	e.cameraX, e.cameraY = 0, 0
 	e.orbitRot = mat3Identity()
+	e.stationVN = [3]float64{0, 0, 1}
 	return e
 }
 
@@ -524,6 +530,10 @@ func (e *Exploration) Update(d Director) error {
 	}
 
 	e.player.Update()
+	// 周回ワールドでは自機は移動せず常に中央。Update が積んだ移動量を取り出し、
+	// 惑星と全オブジェクトの回転に使う（自機の位置は中央へ戻す）。
+	e.orbitDX, e.orbitDY = e.player.X, e.player.Y
+	e.player.X, e.player.Y = 0, 0
 	e.player.PushTrail()
 	e.rotationSound.Update(isRotationKeyPressed())
 	e.burnerSound.Update(e.player.ThrustState != entity.ThrustOff, e.player.ThrustState == entity.ThrustBoost)
@@ -570,18 +580,16 @@ func (e *Exploration) Update(d Director) error {
 	// 自機 ⇄ 海賊の衝突解決（押し戻し＋反射＋相互ダメージ）
 	e.handlePlayerPirateCollisions()
 
-	// ステーションのパルス更新とドック近接判定
+	// ステーションのパルス更新とドック近接判定。
+	// ステーションは惑星のホーム点に固定（ビュー法線 stationVN）。真上付近（手前正面）で接岸可。
 	e.activeDock = nil
 	for _, s := range e.stations {
 		s.Update()
-		// 現在マップのステーションのみ対象（全マップ中心が周期の整数倍で orbit 原点に重なるため）。
+		// 現在マップのステーションのみ対象。
 		if e.lastMap == nil || !e.lastMap.Contains(s.X, s.Y) {
 			continue
 		}
-		// 周回ラップを考慮した自機位置でドック判定（1周回ってきても接岸できる）。
-		px := s.X + orbitWrap(e.player.X-s.X, orbitLapW)
-		py := s.Y + orbitWrap(e.player.Y-s.Y, orbitLapH)
-		if e.activeDock == nil && s.IsPlayerInDock(px, py) {
+		if e.activeDock == nil && e.stationVN[2] > orbitDockMinZ {
 			e.activeDock = s
 		}
 	}
@@ -819,23 +827,26 @@ func (e *Exploration) Update(d Director) error {
 	}
 	e.pickups = e.pickups[:np]
 
-	// オービット・カメラ（中央デッドゾーン外のはみ出し分だけスクロール＝惑星が回る）
+	// 自機の移動量から惑星と全オブジェクトを回す（自機は常に中央）。
 	e.updateOrbitCamera()
-	// 周回周期を超えたらワールドを折り返して座標を [0, 周期) に保つ（1周で (0,0) に戻る）。
-	e.recenterOrbit()
 	return nil
 }
 
 // オービット（惑星周回）関連の調整値。
 const (
-	// 周回1周ぶんのカメラ移動量（px）。横移動 orbitLapW で経度が、縦移動 orbitLapH で
-	// 縦回転がそれぞれ 360° 回って元に戻る。近景星レイヤー（タイル1000・パララックス0.10）が
-	// 1 周でちょうど整数タイル分流れて元に戻るよう、10000 の倍数にしている。
+	// 横移動 orbitLapW で経度が、縦移動 orbitLapH で縦回転が 360° 回って元に戻る。
 	orbitLapW = 10000
 	orbitLapH = 10000
 	// 中央に固定描画する Aurora 惑星の半径（px）。
 	orbitPlanetR = 250
+	// ステーション接岸可能となるビュー法線 z の下限（真上付近で接岸）。
+	orbitDockMinZ = 0.85
 )
+
+// orbitProjR はオブジェクトの球面射影半径（px）。自機中心からのオフセット = ビュー法線×orbitProjR。
+// lapW/2π にすると停止物が自機の移動速度どおりに流れる（近傍は従来の平面と同じ見た目）。
+// 惑星半径(250)より大きい＝惑星に貼り付かず周囲の空間に広がる（倍率調整）。
+var orbitProjR = float64(orbitLapW) / (2 * math.Pi)
 
 // orbitLonLatDeg は向き行列から、画面中央が見ている地点の経度・緯度（度）を求める。
 // 中央の惑星法線 = M·(0,0,1) = 回転行列の第3列。極を越えても正しく [-90,90]/[0,360) に畳まれる。
@@ -849,102 +860,103 @@ func orbitLonLatDeg(rot mat3) (lonDeg, latDeg float64) {
 	return lon, lat
 }
 
-// orbitWrap は周回方向の差分 d を [-period/2, period/2) に折り返す（トーラス状ラップ）。
-// 固定ランドマーク（ステーション）が1周で元の位置へ戻るための写像に使う。
-func orbitWrap(d, period float64) float64 {
-	d = math.Mod(d, period)
-	if d < -period/2 {
-		d += period
-	} else if d >= period/2 {
-		d -= period
+// miniMercator はビュー法線 (vnx,vny,vnz) を自機中心の局所メルカトルへ写す。
+// 中心(0,0,1)からの局所経度・緯度をメルカトル平面化する。緯度は ±85° に制限して
+// tan の発散・0除算を避ける（math.Asinh/Tan は有限）。
+func miniMercator(vnx, vny, vnz, scale float64) (mx, my float64) {
+	lon := math.Atan2(vnx, vnz)
+	lat := math.Asin(math.Max(-1, math.Min(1, vny)))
+	const latLim = 85.0 * math.Pi / 180
+	if lat > latLim {
+		lat = latLim
+	} else if lat < -latLim {
+		lat = -latLim
 	}
-	return d
+	return lon * scale, math.Asinh(math.Tan(lat)) * scale
 }
 
-// updateOrbitCamera はデッドゾーン無しで自機を常に画面中央に保ち、自機の移動が必ず惑星を回す。
-// 惑星の向きは移動量の微小回転を積み重ねる（トラックボール式）。後ろから積む（M·delta）ことで
-// 回転軸が惑星基準になり、極でも「左＝画面Z軸ロール」と自機の移動方向どおりに回る
-// （座標から一意に決める方式だと極で経度が退化し「左＝自転方向」に回ってしまう）。
+// orbitOffsetMini は自機中心オフセット (ox,oy) を局所メルカトルのミニマップ座標へ写す。
+// 手前半球外（オフセット ≥ orbitProjR）は ok=false。
+func orbitOffsetMini(ox, oy, scale float64) (mx, my float64, ok bool) {
+	nx, ny := ox/orbitProjR, oy/orbitProjR
+	d2 := nx*nx + ny*ny
+	if d2 >= 1 {
+		return 0, 0, false
+	}
+	nz := math.Sqrt(1 - d2)
+	mx, my = miniMercator(nx, ny, nz, scale)
+	return mx, my, true
+}
+
+// updateOrbitCamera は当該フレームの自機移動 (orbitDX/DY) から惑星の向きを回し、
+// 全オブジェクト（自機中心オフセット）を惑星と一体で回す。自機は常に画面中央。
+// 惑星の向きは微小回転を後ろから積む（トラックボール）。極でも移動方向どおりに回る。
 func (e *Exploration) updateOrbitCamera() {
-	prevX, prevY := e.cameraX, e.cameraY
-	// 自機は常に画面中央。カメラは自機へ完全追従（はみ出し＝惑星の回転）。
-	e.cameraX, e.cameraY = e.player.X, e.player.Y
-	dx, dy := e.cameraX-prevX, e.cameraY-prevY
-	if dx != 0 || dy != 0 {
-		dAngY := dx / orbitLapW * 2 * math.Pi
-		dAngX := -dy / orbitLapH * 2 * math.Pi // 上(-Y)で北へ回るよう符号反転
-		delta := rotX(dAngX).mul(rotY(dAngY))
-		e.orbitRot = e.orbitRot.mul(delta).orthonormalize()
-	}
-}
-
-// recenterOrbit はオービット座標 (cameraX/Y) が周回周期 [0, orbitLapW/H) を外れたら、
-// ワールド全体（自機・カメラ・コンテンツ）を 1 周ぶんまとめてシフトして折り返す（フローティング原点）。
-// これで座標が無限に伸びず、初期 (0,0) から始めて 1 周回ると座標が (0,0) に戻る。
-// 全要素を同じだけ動かすので相対位置は不変＝描画・当たり判定はそのまま。
-// ステーションは固定ランドマークとしてシフトせず、orbitWrap で最寄り像に描く。
-func (e *Exploration) recenterOrbit() {
-	// 経度（横）・縦回転（縦）とも 1 周 (orbitLapW/H) で元に戻るので両方向を折り返す。
-	dx := -orbitLapW * math.Floor(e.cameraX/orbitLapW)
-	dy := -orbitLapH * math.Floor(e.cameraY/orbitLapH)
+	dx, dy := e.orbitDX, e.orbitDY
+	// 星空は別アキュムレータでスクロール（背景パララックス専用）。
+	e.skyX += dx
+	e.skyY += dy
 	if dx == 0 && dy == 0 {
 		return
 	}
-	e.shiftWorld(dx, dy)
+	dAngY := dx / orbitLapW * 2 * math.Pi
+	dAngX := -dy / orbitLapH * 2 * math.Pi // 上(-Y)で北へ回るよう符号反転
+	delta := rotX(dAngX).mul(rotY(dAngY))
+	e.orbitRot = e.orbitRot.mul(delta).orthonormalize()
+	// 惑星が delta で回るので、オブジェクトのビュー法線は逆 deltaᵀ で回る。
+	e.transformOrbitObjects(delta.transpose())
 }
 
-// shiftWorld はワールド座標を持つ全要素を (dx, dy) 平行移動する（フローティング原点用）。
-func (e *Exploration) shiftWorld(dx, dy float64) {
-	e.cameraX += dx
-	e.cameraY += dy
-	e.player.X += dx
-	e.player.Y += dy
+// transformOrbitObjects は全オブジェクトの自機中心オフセット (X,Y) を、惑星回転の逆 dt で
+// 球面上を回す（オフセット = ビュー法線×orbitProjR とみなす）。これで全てが惑星と一体
+// （ロールまで一致）で動く。手前半球内（オフセット < orbitProjR）の物体のみ扱う前提。
+func (e *Exploration) transformOrbitObjects(dt mat3) {
+	xf := func(x, y float64) (float64, float64) {
+		nx, ny := x/orbitProjR, y/orbitProjR
+		d2 := nx*nx + ny*ny
+		nz := 0.0
+		if d2 < 1 {
+			nz = math.Sqrt(1 - d2)
+		}
+		vn := dt.mulVec([3]float64{nx, ny, nz})
+		return vn[0] * orbitProjR, vn[1] * orbitProjR
+	}
 	for i := range e.player.Trail {
-		e.player.Trail[i].X += dx
-		e.player.Trail[i].Y += dy
+		e.player.Trail[i].X, e.player.Trail[i].Y = xf(e.player.Trail[i].X, e.player.Trail[i].Y)
 	}
 	for _, a := range e.asteroids {
-		a.X += dx
-		a.Y += dy
+		a.X, a.Y = xf(a.X, a.Y)
 	}
 	for _, pr := range e.pirates {
-		pr.X += dx
-		pr.Y += dy
+		pr.X, pr.Y = xf(pr.X, pr.Y)
 		for i := range pr.Trail {
-			pr.Trail[i].X += dx
-			pr.Trail[i].Y += dy
+			pr.Trail[i].X, pr.Trail[i].Y = xf(pr.Trail[i].X, pr.Trail[i].Y)
 		}
 	}
 	for i := range e.bullets {
-		e.bullets[i].X += dx
-		e.bullets[i].Y += dy
+		e.bullets[i].X, e.bullets[i].Y = xf(e.bullets[i].X, e.bullets[i].Y)
 	}
 	for i := range e.mines {
-		e.mines[i].X += dx
-		e.mines[i].Y += dy
+		e.mines[i].X, e.mines[i].Y = xf(e.mines[i].X, e.mines[i].Y)
 	}
 	for i := range e.drones {
-		e.drones[i].X += dx
-		e.drones[i].Y += dy
+		e.drones[i].X, e.drones[i].Y = xf(e.drones[i].X, e.drones[i].Y)
 	}
 	for i := range e.pickups {
-		e.pickups[i].X += dx
-		e.pickups[i].Y += dy
+		e.pickups[i].X, e.pickups[i].Y = xf(e.pickups[i].X, e.pickups[i].Y)
 	}
 	for i := range e.impacts {
-		e.impacts[i].X += dx
-		e.impacts[i].Y += dy
+		e.impacts[i].X, e.impacts[i].Y = xf(e.impacts[i].X, e.impacts[i].Y)
 	}
 	for i := range e.explosions {
-		e.explosions[i].X += dx
-		e.explosions[i].Y += dy
+		e.explosions[i].X, e.explosions[i].Y = xf(e.explosions[i].X, e.explosions[i].Y)
 	}
 	for i := range e.beams {
-		e.beams[i].X1 += dx
-		e.beams[i].Y1 += dy
-		e.beams[i].X2 += dx
-		e.beams[i].Y2 += dy
+		e.beams[i].X1, e.beams[i].Y1 = xf(e.beams[i].X1, e.beams[i].Y1)
+		e.beams[i].X2, e.beams[i].Y2 = xf(e.beams[i].X2, e.beams[i].Y2)
 	}
+	// ステーションは完全な 3D ビュー法線で正確に回す（裏側 z<0 の符号を保つ）。
+	e.stationVN = dt.mulVec(e.stationVN)
 }
 
 // drawOrbitPlanet は現在マップの惑星を (cx, cy)（画面中央）へ固定描画する。
@@ -1100,18 +1112,19 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
 	cx, cy := float64(sw)/2, float64(sh)/2
 
-	e.starfield.draw(dst, e.cameraX, e.cameraY, theme)
+	e.starfield.draw(dst, e.skyX, e.skyY, theme)
 
 	// 周回ワールド: 現在マップの惑星を画面中央に固定描画（Aurora は2軸回転、他はフラット）。
 	e.drawOrbitPlanet(dst, cx, cy)
 
-	// 宇宙ステーション（背景扱い）。現在マップのものだけ描く（全中心が orbit 原点に重なるため）。
-	for _, s := range e.stations {
-		if e.lastMap == nil || !e.lastMap.Contains(s.X, s.Y) {
-			continue
+	// 宇宙ステーション: 惑星のホーム点に固定し、ビュー法線で射影。手前(z>0)のみ描画。
+	if e.stationVN[2] > 0 {
+		for _, s := range e.stations {
+			if e.lastMap == nil || !e.lastMap.Contains(s.X, s.Y) {
+				continue
+			}
+			s.Draw(dst, cx+e.stationVN[0]*orbitProjR, cy+e.stationVN[1]*orbitProjR, theme)
 		}
-		// ステーションは固定ランドマークなので周回ラップで最寄りの像に描く（1周で戻る）。
-		s.Draw(dst, orbitWrap(s.X-e.cameraX, orbitLapW)+cx, orbitWrap(s.Y-e.cameraY, orbitLapH)+cy, theme)
 	}
 
 	// 小惑星
@@ -1275,16 +1288,20 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 	}
 	vector.StrokeRect(dst, mx, my, miniW, miniH, borderW, borderColor, false)
 	// プレイヤー（中央点）
-	vector.FillRect(dst, mx+miniW/2-1, my+miniH/2-1, 2, 2, theme.Line, false)
-	// 小惑星（1 個 = 1 素材で構成されているので、先頭グリッドの素材色で描画）
+	mcx, mcy := mx+miniW/2, my+miniH/2
+	vector.FillRect(dst, mcx-1, mcy-1, 2, 2, theme.Line, false)
+	// ミニマップは自機を中心とした局所メルカトル。近傍は従来とほぼ同スケール（orbitProjR·minimapScale）。
+	mercScale := orbitProjR * minimapScale
+	// 小惑星（先頭グリッドの素材色で描画）。手前半球のもののみ。
 	for _, a := range e.asteroids {
 		if len(a.Grids) == 0 {
 			continue
 		}
-		dx := (a.X - e.cameraX) * minimapScale
-		dy := (a.Y - e.cameraY) * minimapScale
-		nx := mx + miniW/2 + float32(dx)
-		ny := my + miniH/2 + float32(dy)
+		dmx, dmy, ok := orbitOffsetMini(a.X, a.Y, mercScale)
+		if !ok {
+			continue
+		}
+		nx, ny := mcx+float32(dmx), mcy+float32(dmy)
 		if nx < mx || nx > mx+miniW || ny < my || ny > my+miniH {
 			continue
 		}
@@ -1292,10 +1309,12 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		vector.FillRect(dst, nx-1, ny-1, 2, 2, c, false)
 	}
 	// 海賊（範囲内は赤い小点 / 範囲外は縁の内側に方向マーカー「<」）
-	mcx, mcy := mx+miniW/2, my+miniH/2
 	for _, pr := range e.pirates {
-		nx := mcx + float32((pr.X-e.cameraX)*minimapScale)
-		ny := mcy + float32((pr.Y-e.cameraY)*minimapScale)
+		dmx, dmy, ok := orbitOffsetMini(pr.X, pr.Y, mercScale)
+		if !ok {
+			continue
+		}
+		nx, ny := mcx+float32(dmx), mcy+float32(dmy)
 		if nx >= mx && nx <= mx+miniW && ny >= my && ny <= my+miniH {
 			vector.FillRect(dst, nx-1, ny-1, 3, 3, color.NRGBA{0xff, 0x60, 0x40, 0xff}, false)
 			continue
@@ -1303,15 +1322,14 @@ func (e *Exploration) drawHUD(dst *ebiten.Image, theme *ui.Theme, sw, sh int) {
 		drawMinimapMarker(dst, mcx, mcy, mx, my, miniW, miniH, nx, ny, color.NRGBA{0xff, 0x60, 0x40, 0xff})
 	}
 
-	// ステーション（範囲内は小さな四角 / 範囲外は縁の内側に方向マーカー「<」）。
-	// 表示は現在いるワールドマップ（FullMap）内のステーションに限定する。
+	// ステーション: ホーム点のビュー法線を局所メルカトルでミニマップへ。手前は四角、裏側は縁の方向マーカー。
 	for _, s := range e.stations {
 		if e.lastMap == nil || !e.lastMap.Contains(s.X, s.Y) {
 			continue
 		}
-		nx := mcx + float32(orbitWrap(s.X-e.cameraX, orbitLapW)*minimapScale)
-		ny := mcy + float32(orbitWrap(s.Y-e.cameraY, orbitLapH)*minimapScale)
-		if nx >= mx && nx <= mx+miniW && ny >= my && ny <= my+miniH {
+		dmx, dmy := miniMercator(e.stationVN[0], e.stationVN[1], e.stationVN[2], mercScale)
+		nx, ny := mcx+float32(dmx), mcy+float32(dmy)
+		if e.stationVN[2] > 0 && nx >= mx && nx <= mx+miniW && ny >= my && ny <= my+miniH {
 			vector.StrokeRect(dst, nx-3, ny-3, 6, 6, 1, theme.Line, false)
 			continue
 		}
@@ -1431,6 +1449,7 @@ func (e *Exploration) tickWarp() {
 			e.lastMap = dest
 			e.cameraX, e.cameraY = 0, 0
 			e.orbitRot = mat3Identity()
+			e.stationVN = [3]float64{0, 0, 1}
 			// ワープ前の局所状態（小惑星・ピックアップ・弾・機雷・ドローン・海賊・着弾・爆発・自動照準）は持ち越さない
 			e.asteroids = e.asteroids[:0]
 			e.pickups = e.pickups[:0]
