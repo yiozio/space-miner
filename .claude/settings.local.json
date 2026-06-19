@@ -16,7 +16,11 @@
       "Bash(git -C /Users/yiozio/work/go/space-miner diff --stat)",
       "Bash(cat *)",
       "Bash(ls *)",
-      "Bash(echo *)"
+      "Bash(echo *)",
+      "Bash(sed *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(go test *)"
     ]
   }
 }
