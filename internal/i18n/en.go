@@ -55,7 +55,7 @@ func newEN() *Strings {
 		HUD: HUDStrings{
 			CargoFmt:     "CARGO %.0f/%.0f   CR %d",
 			InvFmt:       "%s %d   %s %d   %s %d",
-			SpeedPosFmt:  "SPEED %.2f   POS %.0f, %.0f",
+			SpeedPosFmt:  "SPEED %.2f   LON %.0f° LAT %.0f°",
 			DockPrompt:   "[ Space ] DOCK",
 			HelpThrust:   "Thrust",
 			HelpRotate:   "AD: Rotate",

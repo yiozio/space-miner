@@ -141,7 +141,8 @@ func rotY(a float64) mat3 {
 	return mat3{c, 0, -s, 0, 1, 0, s, 0, c}
 }
 
-// orthonormalize は数値誤差で崩れた回転行列を Gram–Schmidt で正規直交化し直す。
+// orthonormalize は数値誤差で崩れた回転行列を Gram–Schmidt で正規直交化し直す
+// （トラックボール式に微小回転を積み続けても歪まないようにする）。
 func (m mat3) orthonormalize() mat3 {
 	norm := func(v [3]float64) [3]float64 {
 		l := math.Sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])

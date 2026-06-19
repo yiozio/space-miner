@@ -57,7 +57,7 @@ func newJA() *Strings {
 		HUD: HUDStrings{
 			CargoFmt:     "積荷 %.0f/%.0f   CR %d",
 			InvFmt:       "%s %d   %s %d   %s %d",
-			SpeedPosFmt:  "速度 %.2f   座標 %.0f, %.0f",
+			SpeedPosFmt:  "速度 %.2f   経度 %.0f° 緯度 %.0f°",
 			DockPrompt:   "[ Space ] ドッキング",
 			HelpThrust:   "推進",
 			HelpRotate:   "AD: 旋回",
