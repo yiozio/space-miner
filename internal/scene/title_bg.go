@@ -122,7 +122,7 @@ func (bg *titleBackground) draw(dst *ebiten.Image, theme *ui.Theme) {
 	tex := assetimage.Planet3rdFrameAt(bg.t * planetCloudSpeed)
 	spin := math.Mod(bg.t*planetSpinTurnsPerSec, 1.0)
 	atmo := planetAtmosphere{strength: 0.8, color: [3]float32{0.6, 0.8, 1.0}, outer: 1.07}
-	if !drawPlanetSphere(dst, tex, titlePlanetX, titlePlanetY, titlePlanetR, spin, atmo) {
+	if !drawPlanetSphere(dst, tex, titlePlanetX, titlePlanetY, titlePlanetR, spin, 0, atmo) {
 		drawTitlePlanet(dst, titlePlanetX, titlePlanetY, titlePlanetR, titlePlanetColor)
 	}
 	for _, a := range bg.asteroids {

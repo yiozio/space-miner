@@ -23,6 +23,7 @@ var Radius float   // 惑星本体の半径（px）
 var TexSize vec2   // テクスチャの元サイズ（px）
 var LightDir vec3  // 光源方向（正規化前で可）
 var Rotation float // 自転の経度オフセット（0..1 で1周）
+var Tilt float     // 緯度方向の回転（ラジアン。周回の上下移動で球を縦に転がす）
 // 大気圏層（AtmoStrength=0 で無効）。
 var AtmoColor vec3    // 大気の色（青白）
 var AtmoStrength float // 大気の濃さ
@@ -39,10 +40,17 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
 	if d2 <= 1.0 {
 		nz := sqrt(1.0 - d2)
 		normal := vec3(local.x, local.y, nz)
+		// UV 用には法線を緯度方向（X 軸まわり Tilt）に回した向きを使う。
+		// 陰影は視点法線 normal のまま（光源は固定）なので、回しても明暗は動かない。
+		ct := cos(Tilt)
+		st := sin(Tilt)
+		ry := normal.y*ct - normal.z*st
+		rz := normal.y*st + normal.z*ct
+		rn := vec3(normal.x, ry, rz)
 		// 経度（自転で回す）と緯度を UV へ。
-		lon := atan2(local.x, nz)/(2.0*3.14159265) + 0.5 + Rotation
+		lon := atan2(rn.x, rn.z)/(2.0*3.14159265) + 0.5 + Rotation
 		u := lon - floor(lon)
-		lat := 0.5 - asin(clamp(local.y, -1.0, 1.0))/3.14159265
+		lat := 0.5 - asin(clamp(rn.y, -1.0, 1.0))/3.14159265
 		uv := clamp(vec2(u, lat)*TexSize, vec2(0.5), TexSize-vec2(0.5))
 		c := imageSrc0At(imageSrc0Origin() + uv)
 		// ランバート + 環境光。球の陰影で立体感を出す。
@@ -99,7 +107,7 @@ type planetAtmosphere struct {
 // spin は自転の経度オフセット（0..1 で1周）。tex はアニメフレーム（毎フレーム差し替え可）。
 // atmo に大気を指定すると、端ほど濃い青白い大気圏層（＋外周ハロー）を重ねる。
 // シェーダ・テクスチャが使えない場合は false を返し、呼び出し側が平面描画にフォールバックする。
-func drawPlanetSphere(dst, tex *ebiten.Image, sx, sy, r, spin float64, atmo planetAtmosphere) bool {
+func drawPlanetSphere(dst, tex *ebiten.Image, sx, sy, r, spin, tilt float64, atmo planetAtmosphere) bool {
 	sh := planetShader()
 	if sh == nil || tex == nil {
 		return false
@@ -132,6 +140,7 @@ func drawPlanetSphere(dst, tex *ebiten.Image, sx, sy, r, spin float64, atmo plan
 		"TexSize":      []float32{tw, th},
 		"LightDir":     []float32{-0.5, -0.6, 0.62}, // 左上・手前から
 		"Rotation":     float32(spin),
+		"Tilt":         float32(tilt),
 		"AtmoColor":    []float32{atmo.color[0], atmo.color[1], atmo.color[2]},
 		"AtmoStrength": float32(atmo.strength),
 		"AtmoOuter":    float32(outer),

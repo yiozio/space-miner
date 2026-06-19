@@ -156,6 +156,8 @@ func NewExplorationFromPlayer(p *entity.Player, playtime float64) *Exploration {
 		beepRng:        rand.New(rand.NewSource(4)),
 	}
 	e.beepTimer = beepIntervalMinFrames + e.beepRng.Intn(beepIntervalMaxFrames-beepIntervalMinFrames)
+	// オービット・カメラの初期値を自機位置に合わせ、開始時に自機を画面中央へ置く。
+	e.cameraX, e.cameraY = e.player.X, e.player.Y
 	// 各 FullMap の中心にステーションを配置（恒星マップ／ワープ先選択でも参照される）
 	for i := range e.world.Maps {
 		m := &e.world.Maps[i]
@@ -352,11 +354,20 @@ func (e *Exploration) droneAttack(d *entity.Drone) {
 	}
 }
 
-// trySpawnPirate は現フレームの海賊出現上限に達していなければ、
-// ミニマップ外のリング上で PirateZone 内の点を選んで海賊を 1 体追加する。
+// 周回ワールドの不定期スポーン上限（ゾーン制を撤去し、常時どこでも湧く）。
+const (
+	orbitAsteroidCap = 14
+	orbitPirateCap   = 4
+)
+
+// orbitPiratePatterns は出現候補の海賊パターン。
+var orbitPiratePatterns = []entity.PiratePatternID{
+	entity.PiratePatternScout, entity.PiratePatternBrawler, entity.PiratePatternCruiser,
+}
+
+// trySpawnPirate は上限未満なら確率で海賊を 1 体、自機周囲のリング上に出現させる（ゾーン非依存）。
 func (e *Exploration) trySpawnPirate() {
-	cap := e.world.PirateSpawnCap(e.player.X, e.player.Y)
-	if len(e.pirates) >= cap {
+	if len(e.pirates) >= orbitPirateCap {
 		return
 	}
 	// 上限未満でも確率で間引く（倒した直後に矢継ぎ早に湧かないように）。
@@ -364,61 +375,40 @@ func (e *Exploration) trySpawnPirate() {
 		return
 	}
 	first := len(e.pirates) == 0 // 0 体→出現の瞬間だけ警告音を鳴らす
-	for tries := 0; tries < 8; tries++ {
-		ang := e.pirateSpawnRng.Float64() * math.Pi * 2
-		dist := asteroidSpawnRingMin + e.pirateSpawnRng.Float64()*(asteroidSpawnRingMax-asteroidSpawnRingMin)
-		x := e.player.X + math.Cos(ang)*dist
-		y := e.player.Y + math.Sin(ang)*dist
-		if !e.world.InBounds(x, y) {
-			continue
-		}
-		patternID, ok := e.world.PickPiratePattern(x, y, e.pirateSpawnRng)
-		if !ok {
-			continue
-		}
-		def := entity.PiratePatternByID(patternID)
-		if def == nil {
-			continue
-		}
-		e.pirates = append(e.pirates, entity.NewPirate(x, y, e.player.X, e.player.Y, def))
-		if first {
-			sound.PlayWarning()
-		}
+	ang := e.pirateSpawnRng.Float64() * math.Pi * 2
+	dist := asteroidSpawnRingMin + e.pirateSpawnRng.Float64()*(asteroidSpawnRingMax-asteroidSpawnRingMin)
+	x := e.player.X + math.Cos(ang)*dist
+	y := e.player.Y + math.Sin(ang)*dist
+	patternID := orbitPiratePatterns[e.pirateSpawnRng.Intn(len(orbitPiratePatterns))]
+	def := entity.PiratePatternByID(patternID)
+	if def == nil {
 		return
+	}
+	e.pirates = append(e.pirates, entity.NewPirate(x, y, e.player.X, e.player.Y, def))
+	if first {
+		sound.PlayWarning()
 	}
 }
 
-// trySpawnAsteroid は現フレームの生成上限に達していなければ、
-// ミニマップ外のリング上で全体マップ内・ゾーン内の点を選んで小惑星を 1 つ追加する。
-// 生成位置で重なるゾーンの素材重みを合算して 1 素材を抽選する。
+// trySpawnAsteroid は上限未満なら小惑星を 1 つ、自機周囲のリング上に出現させる（ゾーン非依存）。
 func (e *Exploration) trySpawnAsteroid() {
-	cap := e.world.SpawnCap(e.player.X, e.player.Y)
-	if len(e.asteroids) >= cap {
+	if len(e.asteroids) >= orbitAsteroidCap {
 		return
 	}
-	for tries := 0; tries < 8; tries++ {
-		ang := e.spawnRng.Float64() * math.Pi * 2
-		dist := asteroidSpawnRingMin + e.spawnRng.Float64()*(asteroidSpawnRingMax-asteroidSpawnRingMin)
-		x := e.player.X + math.Cos(ang)*dist
-		y := e.player.Y + math.Sin(ang)*dist
-		if !e.world.InBounds(x, y) {
-			continue
-		}
-		res, ok := e.world.PickResource(x, y, e.spawnRng)
-		if !ok {
-			continue
-		}
-		size := asteroidMinSize + e.spawnRng.Intn(asteroidMaxSize-asteroidMinSize+1)
-		a := entity.NewAsteroid(e.spawnRng.Int63(), x, y, size, res)
-		// 生成直後にプレイヤー方向へ軽く寄せ、ミニマップ内に流入してくる挙動を作る
-		toX, toY := e.player.X-x, e.player.Y-y
-		if d := math.Hypot(toX, toY); d > 0 {
-			a.VX += (toX / d) * asteroidInboundDrift
-			a.VY += (toY / d) * asteroidInboundDrift
-		}
-		e.asteroids = append(e.asteroids, a)
-		return
+	ang := e.spawnRng.Float64() * math.Pi * 2
+	dist := asteroidSpawnRingMin + e.spawnRng.Float64()*(asteroidSpawnRingMax-asteroidSpawnRingMin)
+	x := e.player.X + math.Cos(ang)*dist
+	y := e.player.Y + math.Sin(ang)*dist
+	res := entity.AllResourceTypes()[e.spawnRng.Intn(len(entity.AllResourceTypes()))]
+	size := asteroidMinSize + e.spawnRng.Intn(asteroidMaxSize-asteroidMinSize+1)
+	a := entity.NewAsteroid(e.spawnRng.Int63(), x, y, size, res)
+	// 生成直後にプレイヤー方向へ軽く寄せ、視界へ流入してくる挙動を作る
+	toX, toY := e.player.X-x, e.player.Y-y
+	if d := math.Hypot(toX, toY); d > 0 {
+		a.VX += (toX / d) * asteroidInboundDrift
+		a.VY += (toY / d) * asteroidInboundDrift
 	}
+	e.asteroids = append(e.asteroids, a)
 }
 
 // playDamageSound はシールドの有無で被ダメージ音を出し分ける。
@@ -804,10 +794,52 @@ func (e *Exploration) Update(d Director) error {
 	}
 	e.pickups = e.pickups[:np]
 
-	// カメラ追従
-	e.cameraX = e.player.X
-	e.cameraY = e.player.Y
+	// オービット・カメラ（中央デッドゾーン外のはみ出し分だけスクロール＝惑星が回る）
+	e.updateOrbitCamera()
 	return nil
+}
+
+// オービット（惑星周回）関連の調整値。
+const (
+	orbitScreenW = 1280 // 固定解像度
+	orbitScreenH = 720
+	// 自機が自由移動できる中央デッドゾーンの端マージン（px）。画面端 orbitMargin 内へ
+	// 押し込むと、その方向へカメラがスクロールして惑星が回る（中央は自由に飛べる）。
+	orbitMarginX = 140
+	orbitMarginY = 120
+	// 周回1周ぶんのカメラ移動量（px）。これだけ動くと惑星が360°回って元の向きに戻る。
+	orbitLapW = 5000
+	orbitLapH = 5000
+	// 中央に固定描画する Aurora 惑星の半径（px）。
+	orbitPlanetR = 250
+)
+
+// updateOrbitCamera は自機が中央デッドゾーンを越えた分だけカメラをスクロールする。
+// 中央では自機が自由に飛べ、画面端へ押し付けるとその方向へスクロールして惑星の周りを回る。
+func (e *Exploration) updateOrbitCamera() {
+	scx, scy := float64(orbitScreenW)/2, float64(orbitScreenH)/2
+	sx := e.player.X - e.cameraX + scx
+	sy := e.player.Y - e.cameraY + scy
+	if sx < orbitMarginX {
+		e.cameraX -= orbitMarginX - sx
+	} else if sx > orbitScreenW-orbitMarginX {
+		e.cameraX += sx - (orbitScreenW - orbitMarginX)
+	}
+	if sy < orbitMarginY {
+		e.cameraY -= orbitMarginY - sy
+	} else if sy > orbitScreenH-orbitMarginY {
+		e.cameraY += sy - (orbitScreenH - orbitMarginY)
+	}
+}
+
+// drawAuroraOrbit は Aurora 惑星を (cx, cy)（画面中央）へ固定描画し、オービット・カメラの
+// スクロール量を経度(横)・緯度(縦)の回転へ写像する。1周(orbitLapW/H)で元の向きに戻る。
+func (e *Exploration) drawAuroraOrbit(dst *ebiten.Image, cx, cy float64) {
+	tex := assetimage.Planet3rdFrameAt(e.playtime * planetCloudSpeed)
+	spin := math.Mod(e.cameraX/orbitLapW, 1.0)  // 経度（横スクロール由来）
+	tilt := e.cameraY / orbitLapH * 2 * math.Pi // 緯度（縦スクロール由来）
+	atmo := planetAtmosphere{strength: 0.8, color: [3]float32{0.6, 0.8, 1.0}, outer: 1.07}
+	drawPlanetSphere(dst, tex, cx, cy, orbitPlanetR, spin, tilt, atmo)
 }
 
 // handlePlayerAsteroidCollisions は自機の当たり判定矩形（OBB）と各小惑星グリッド（円）を
@@ -931,12 +963,8 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 
 	e.starfield.draw(dst, e.cameraX, e.cameraY, theme)
 
-	// 背景天体: 各 FullMap の Body を、星空の手前・ステーションの奥に大きく描画する。
-	// 区画外（lastMap=nil）では描かない。プレイ可能領域 ±30000 内なら近隣区画の Body も視野に入る。
-	for i := range e.world.Maps {
-		m := &e.world.Maps[i]
-		drawCelestialBackdrop(dst, &m.Body, m.CX, m.CY, e.cameraX, e.cameraY, cx, cy, e.playtime)
-	}
+	// 周回ワールド: Aurora の惑星を画面中央に固定し、オービット・カメラに応じて2軸回転させる。
+	e.drawAuroraOrbit(dst, cx, cy)
 
 	// 宇宙ステーション（背景扱い）
 	for _, s := range e.stations {
@@ -1382,56 +1410,6 @@ const planetSpinTurnsPerSec = 0.02
 
 // planetCloudSpeed は雲アニメ（GIF）の再生速度倍率。1.0 で GIF 本来の速さ。
 const planetCloudSpeed = 0.5
-
-func drawCelestialBackdrop(dst *ebiten.Image, body *entity.Celestial,
-	mapCX, mapCY, cameraX, cameraY, screenCX, screenCY, playtime float64) {
-	if body == nil || body.BackdropRadius <= 0 {
-		return
-	}
-	// anchor = FullMap 中心。anchor 上では設計オフセットそのまま見える。
-	// 自機が動いた分だけ (anchor - camera) * P を加える（P が小さいほど動かない）。
-	const p = nearPlanetParallax
-	sx := float32(body.BackdropOffsetX + (mapCX-cameraX)*p + screenCX)
-	sy := float32(body.BackdropOffsetY + (mapCY-cameraY)*p + screenCY)
-	r := float32(body.BackdropRadius)
-	// 視界外なら早期スキップ（半径分のマージン込み）
-	sw, sh := dst.Bounds().Dx(), dst.Bounds().Dy()
-	if sx+r < 0 || sx-r > float32(sw) || sy+r < 0 || sy-r > float32(sh) {
-		return
-	}
-	// 惑星はテクスチャを貼った自転する立体球として描く（シェーダ）。
-	// アセット未準備でも平面描画にはフォールバックしない（タイトルで展開完了を待つ前提）。
-	if body.Kind == entity.CelestialPlanet {
-		// 自転位相は 1 周で正規化（長時間プレイでも float32 精度を保つ）。
-		spin := math.Mod(playtime*planetSpinTurnsPerSec, 1.0)
-		// 雲のアニメーションは GIF を planetCloudSpeed 倍速で再生（控えめにゆっくり）。
-		tex := assetimage.Planet3rdFrameAt(playtime * planetCloudSpeed)
-		// Aurora は青白い大気圏層を重ねる（端ほど濃い）。他の惑星は大気なし。
-		atmo := planetAtmosphere{}
-		if body.Name == "Aurora" {
-			atmo = planetAtmosphere{strength: 0.8, color: [3]float32{0.6, 0.8, 1.0}, outer: 1.07}
-		}
-		drawPlanetSphere(dst, tex, float64(sx), float64(sy), float64(r), spin, atmo)
-		return
-	}
-	// 以降は衛星・恒星などの平面描画。暗側ベース（不透明）が影の側として残る。
-	dark := scaleColor(body.Color, 0.9)
-	dark.A = 255
-	vector.FillCircle(dst, sx, sy, r, dark, true)
-	// 明側: 元の色を光源（左上）方向にオフセットしてやや小さく描く。
-	// 半径と offset の合計が r 以下になるよう調整して輪郭の外にはみ出さない。
-	lit := body.Color
-	lit.A = 255
-	vector.FillCircle(dst, sx-r*0.15, sy-r*0.15, r*0.78, lit, true)
-	// ハイライト: 光源直接光のように小さく明るい点。
-	hi := scaleColor(body.Color, 1.35)
-	hi.A = 220
-	vector.FillCircle(dst, sx-r*0.42, sy-r*0.42, r*0.2, hi, true)
-	// 輪郭は本体色をやや暗くして縁取り。遠景の球体らしくシャープすぎないように。
-	rim := scaleColor(body.Color, 0.7)
-	rim.A = 255
-	vector.StrokeCircle(dst, sx, sy, r, 1.0, rim, true)
-}
 
 // scaleColor は NRGBA の RGB 各成分を s 倍する。s>1 はクランプ、A は保持。
 func scaleColor(c color.NRGBA, s float64) color.NRGBA {
