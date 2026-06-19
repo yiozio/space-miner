@@ -978,8 +978,7 @@ func (e *Exploration) transformOrbitObjects(dt mat3) {
 }
 
 // drawOrbitPlanet は現在マップの惑星を (cx, cy)（画面中央）へ固定描画する。
-// Aurora はテクスチャ球で、オービット・カメラのスクロール量を経度(横)・緯度(縦)の回転へ
-// 写像する（1周 orbitLapW/H で元の向きに戻る）。それ以外のマップはフラットな円で描く。
+// Aurora はテクスチャ球、それ以外のマップは当面、単色の 3D 球体で描く（後で GIF に差し替え）。
 func (e *Exploration) drawOrbitPlanet(dst *ebiten.Image, cx, cy float64) {
 	if e.lastMap == nil {
 		return
@@ -991,25 +990,24 @@ func (e *Exploration) drawOrbitPlanet(dst *ebiten.Image, cx, cy float64) {
 		drawPlanetSphere(dst, tex, cx, cy, orbitPlanetR, e.orbitRot, atmo, true) // 周回: 影も一緒に回す
 		return
 	}
-	drawFlatPlanet(dst, cx, cy, orbitPlanetR, body.Color)
+	// 他のマップは当面、単色の 3D 球体（後でテクスチャ GIF に差し替える）。陰影が周回で回る。
+	drawPlanetSphere(dst, solidPlanetTex(body.Color), cx, cy, orbitPlanetR, e.orbitRot, planetAtmosphere{}, true)
 }
 
-// drawFlatPlanet は陰影付きのフラットな惑星円を描く（テクスチャ非対応マップ用）。
-func drawFlatPlanet(dst *ebiten.Image, cx, cy, r float64, base color.NRGBA) {
-	scx, scy, sr := float32(cx), float32(cy), float32(r)
-	dark := scaleColor(base, 0.9)
-	dark.A = 255
-	vector.FillCircle(dst, scx, scy, sr, dark, true)
-	lit := base
-	lit.A = 255
-	vector.FillCircle(dst, scx-sr*0.15, scy-sr*0.15, sr*0.78, lit, true)
-	hi := scaleColor(base, 1.35)
-	hi.A = 220
-	vector.FillCircle(dst, scx-sr*0.42, scy-sr*0.42, sr*0.2, hi, true)
-	rim := scaleColor(base, 0.7)
-	rim.A = 255
-	vector.StrokeCircle(dst, scx, scy, sr, 1.0, rim, true)
+// solidPlanetTex は単色 3D 惑星用の 1x1 不透明テクスチャを返す（色ごとにキャッシュ）。
+// 球面シェーダがこの 1 ピクセルを全面サンプルするため、陰影だけ付いた単色球になる。
+func solidPlanetTex(c color.NRGBA) *ebiten.Image {
+	c.A = 255
+	if img, ok := solidPlanetTexCache[c]; ok {
+		return img
+	}
+	img := ebiten.NewImage(1, 1)
+	img.Fill(c)
+	solidPlanetTexCache[c] = img
+	return img
 }
+
+var solidPlanetTexCache = map[color.NRGBA]*ebiten.Image{}
 
 // handlePlayerAsteroidCollisions は自機の当たり判定矩形（OBB）と各小惑星グリッド（円）を
 // 判定し、重なりを解消（押し戻し）、相対速度を反射、衝突相対速度に応じて
@@ -1132,7 +1130,7 @@ func (e *Exploration) Draw(dst *ebiten.Image, d Director) {
 
 	e.starfield.draw(dst, e.skyX, e.skyY, theme)
 
-	// 周回ワールド: 現在マップの惑星を画面中央に固定描画（Aurora は2軸回転、他はフラット）。
+	// 周回ワールド: 現在マップの惑星を画面中央に固定描画（Aurora はテクスチャ球、他は単色球）。
 	e.drawOrbitPlanet(dst, cx, cy)
 
 	// 宇宙ステーション: 惑星のホーム点に固定し、ビュー法線で射影。手前(z>0)のみ描画。
